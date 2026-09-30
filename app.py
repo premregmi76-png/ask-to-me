@@ -18,6 +18,9 @@ NOTES_DIR = "uploaded_notes"
 if not os.path.exists(NOTES_DIR):
     os.makedirs(NOTES_DIR)
 
+# NotebookLM को लिङ्क
+NOTEBOOK_URL = "https://gemini.google.com/notebook/95067217-c097-43c8-9ffa-fe053d411f02"
+
 with st.sidebar:
     st.header("📚 नोट व्यवस्थापन (Admin)")
     uploaded_files = st.file_uploader("नयाँ नोट अपलोड गर्नुहोस् (PDF/TXT)", type=["pdf", "txt"], accept_multiple_files=True)
@@ -32,6 +35,10 @@ with st.sidebar:
     st.write("📁 **अपलोड भएका फाइलहरू:**")
     for f in os.listdir(NOTES_DIR):
         st.caption(f"• {f}")
+        
+    st.markdown("---")
+    st.info("💡 **असीमित अध्ययनको लागि:**")
+    st.link_button("🚀 Open NotebookLM Hub", NOTEBOOK_URL)
 
 @st.cache_data
 def get_notes():
@@ -69,11 +76,13 @@ prompt = f"""
 2. उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
 """
 
-# सिधै प्रमाणित भएको gemini-flash-latest प्रयोग गर्ने
 model = genai.GenerativeModel("gemini-flash-latest", system_instruction=prompt)
 
 st.title("⚡ NEA Level 5 Electrical - 'Ask To Me'")
 st.caption("नेपाल विद्युत प्राधिकरण तह-५ अध्ययन सहयोगी")
+
+# NotebookLM लाई माथि नै जोड्ने ब्यानर
+st.success(f"📖 **सम्पूर्ण नोटहरू र असीमित प्रश्न सोध्नका लागि:** [यहाँ क्लिक गरी Google NotebookLM खोल्नुहोस्]({NOTEBOOK_URL})")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -95,6 +104,6 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ स
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
             except Exception as err:
                 if "429" in str(err):
-                    st.warning("गुगलको निःशुल्क कोटा प्रति मिनेट केही प्रश्न मात्र सीमित छ। कृपया ३० सेकेन्ड पर्खेर फेरि सोध्नुहोस्।")
+                    st.warning(f"गुगलको निःशुल्क कोटा प्रति मिनेट सीमित छ। असीमित र तत्काल प्रश्न सोध्न कृपया [यहाँ क्लिक गरेर हाम्रो NotebookLM प्रयोग गर्नुहोस्]({NOTEBOOK_URL})।")
                 else:
                     st.error(f"त्रुटि: {err}")

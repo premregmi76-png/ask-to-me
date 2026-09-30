@@ -1,45 +1,117 @@
+import os
+import time
 import streamlit as st
+import google.generativeai as genai
+from pypdf import PdfReader
 
 # पेज कन्फिगरेसन
 st.set_page_config(
     page_title="NEA Level 5 Electrical - Ask To Me", 
     page_icon="⚡", 
-    layout="centered"
+    layout="wide"
 )
 
-# तपाईंको नोटबुकको लिङ्क
-PORTAL_URL = "https://gemini.google.com/notebook/95067217-c097-43c8-9ffa-fe053d411f02"
+# API Key
+api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+if not api_key:
+    st.error("सिस्टम कन्फिगरेसन अधुरो छ।")
+    st.stop()
 
-# मुख्य वेबसाइट हेडर
+genai.configure(api_key=api_key, transport="rest")
+
+NOTES_DIR = "uploaded_notes"
+if not os.path.exists(NOTES_DIR):
+    os.makedirs(NOTES_DIR)
+
+# साइडबारमा नोट व्यवस्थापन
+with st.sidebar:
+    st.markdown("### 📚 अध्ययन सामग्री (Admin)")
+    uploaded_files = st.file_uploader("नयाँ नोट अपलोड गर्नुहोस् (PDF/TXT)", type=["pdf", "txt"], accept_multiple_files=True)
+    if uploaded_files:
+        for file in uploaded_files:
+            with open(os.path.join(NOTES_DIR, file.name), "wb") as f:
+                f.write(file.getbuffer())
+        st.cache_data.clear()
+        st.success("नयाँ नोट सुरक्षित गरियो!")
+    
+    st.markdown("---")
+    st.write("📁 **अपलोड भएका फाइलहरू:**")
+    for f in os.listdir(NOTES_DIR):
+        st.caption(f"• {f}")
+
+@st.cache_data
+def get_notes():
+    text = ""
+    if os.path.exists(NOTES_DIR):
+        for f in os.listdir(NOTES_DIR):
+            p = os.path.join(NOTES_DIR, f)
+            if f.endswith(".pdf"):
+                try:
+                    reader = PdfReader(p)
+                    for page in reader.pages[:20]:
+                        t = page.extract_text()
+                        if t:
+                            text += t + "\n"
+                except Exception:
+                    pass
+            elif f.endswith(".txt"):
+                try:
+                    with open(p, "r", encoding="utf-8") as file:
+                        text += file.read() + "\n"
+                except Exception:
+                    pass
+    return text[:25000]
+
+notes_content = get_notes()
+
+prompt = f"""
+तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ (इलेक्ट्रिकल सुपरभाइजर) खुला प्रतियोगितात्मक परीक्षाका लागि विशेषज्ञ शिक्षक र डिजिटल सहायक ('Ask To Me') हुनुहुन्छ।
+
+उपलब्ध आधिकारिक नोटहरू:
+{notes_content if notes_content else "पाठ्यक्रम अनुसार उत्तर दिनुहोस्।"}
+
+नियमहरू:
+1. भाषा: विद्यार्थीले नेपालीमा सोधे नेपालीमा, अंग्रेजीमा सोधे अंग्रेजीमा वा आवश्यकता अनुसार स्पष्ट प्राविधिक भाषामा उत्तर दिनुहोस्।
+2. ढाँचा: उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
+"""
+
+model = genai.GenerativeModel("gemini-2.0-flash", system_instruction=prompt)
+
+# मुख्य वेबसाइट शीर्षक
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
 st.subheader("इलेक्ट्रिकल सुपरभाइजर — परीक्षा सहयोगी प्रणाली ('Ask To Me')")
-st.caption("खुला प्रतियोगितात्मक परीक्षा: प्रथम र द्वितीय पत्र तयारी")
-
+st.caption("पाठ्यक्रम (प्रथम र द्वितीय पत्र) सम्बन्धी कुनै पनि प्रश्न सोध्न सक्नुहुन्छ।")
 st.markdown("---")
 
-# आकर्षक सूचना बक्स
-st.info("📢 **विद्यार्थीहरूका लागि विशेष सूचना:**\n\nपरीक्षा केन्द्रित सम्पूर्ण पाठ्यक्रम, ऐन-कानून, प्राविधिक विषयवस्तु र नोटहरूका आधारमा २४ सै घण्टा असीमित प्रश्न सोध्न तलको मुख्य बटन थिच्नुहोस्।")
+# च्याट हिस्ट्री व्यवस्थापन
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# ठूलो मुख्य बटन
-st.link_button("🚀 असीमित परीक्षा सहयोगी पोर्टल खोल्नुहोस् (Open Portal)", PORTAL_URL, type="primary", use_container_width=True)
+for m in st.session_state.chat_history:
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])
 
-st.markdown("---")
+# विद्यार्थीले सिधै यहीँ प्रश्न सोध्ने बाकस
+if q := st.chat_input("तपाईंको प्रश्न यहाँ टाइप गर्नुहोस् (उदा: What is Buchholz relay? वा विद्युत चोरी नियन्त्रण ऐनका मुख्य बुँदा)..."):
+    st.session_state.chat_history.append({"role": "user", "content": q})
+    with st.chat_message("user"):
+        st.markdown(q)
 
-st.markdown("""
-### 💡 कसरी अध्ययन गर्ने?
-1. माथिको रातो/निलो **"असीमित परीक्षा सहयोगी पोर्टल खोल्नुहोस्"** बटनमा क्लिक गर्नुहोस्।
-2. स्क्रिनको तल रहेको च्याट बक्समा आफ्नो प्रश्न नेपाली वा अंग्रेजीमा सोध्नुहोस्।
-3. **उदाहरणका लागि सोध्न सकिने प्रश्नहरू:**
-   - *Buchholz relay को कार्य सिद्धान्त के हो?*
-   - *नेपाल विद्युत प्राधिकरण ऐन २०४१ अनुसार सञ्चालक समितिको काम र कर्तव्य के हो?*
-   - *Corona effect भनेको के हो? यसका फाइदा र बेफाइदा के के हुन्?*
-   - *विद्युत चोरी नियन्त्रण ऐन २०५८ मा दण्ड सजाय सम्बन्धी के व्यवस्था छ?*
-""")
-
-# साइडबारमा पनि लिङ्क राख्ने
-with st.sidebar:
-    st.header("⚡ NEA Level 5 Hub")
-    st.write("प्रथम पत्र: सामान्य ज्ञान, गणित, संस्थागत र कानून")
-    st.write("द्वितीय पत्र: सेवा सम्बन्धी प्राविधिक ज्ञान")
-    st.markdown("---")
-    st.link_button("👉 सिधै पोर्टलमा जानुहोस्", PORTAL_URL, use_container_width=True)
+    with st.chat_message("assistant"):
+        with st.spinner("उत्तर तयार गर्दै..."):
+            ans = None
+            # कोटा एरर आएमा ३ पटकसम्म स्वतः पुन: प्रयास गर्ने
+            for attempt in range(3):
+                try:
+                    response = model.generate_content(q, request_options={"timeout": 60})
+                    ans = response.text
+                    break
+                except Exception as err:
+                    if "429" in str(err) and attempt < 2:
+                        time.sleep(5)  # ५ सेकेन्ड पर्खेर फेरि सोध्ने
+                        continue
+                    else:
+                        ans = f"⚠️ अहिले धेरै प्रश्नहरू एकैपटक आएकाले सर्भर व्यस्त छ। कृपया केही सेकेन्ड पर्खेर पुन: सोध्नुहोस्।"
+            
+            st.markdown(ans)
+            st.session_state.chat_history.append({"role": "assistant", "content": ans})

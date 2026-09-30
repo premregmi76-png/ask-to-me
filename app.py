@@ -45,7 +45,7 @@ def get_notes():
             if f.endswith(".pdf"):
                 try:
                     reader = PdfReader(p)
-                    for page in reader.pages[:20]:
+                    for page in reader.pages[:15]:
                         t = page.extract_text()
                         if t:
                             text += t + "\n"
@@ -57,7 +57,7 @@ def get_notes():
                         text += file.read() + "\n"
                 except Exception:
                     pass
-    return text[:25000]
+    return text[:15000]
 
 notes_content = get_notes()
 
@@ -71,9 +71,6 @@ prompt = f"""
 1. भाषा: विद्यार्थीले नेपालीमा सोधे नेपालीमा, अंग्रेजीमा सोधे अंग्रेजीमा वा आवश्यकता अनुसार स्पष्ट प्राविधिक भाषामा उत्तर दिनुहोस्।
 2. ढाँचा: उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
 """
-
-# काम गर्ने आधिकारिक मोडल
-model = genai.GenerativeModel("gemini-flash-latest", system_instruction=prompt)
 
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
 st.subheader("इलेक्ट्रिकल सुपरभाइजर — परीक्षा सहयोगी प्रणाली ('Ask To Me')")
@@ -94,13 +91,26 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ ट
 
     with st.chat_message("assistant"):
         with st.spinner("उत्तर तयार गर्दै..."):
-            try:
-                response = model.generate_content(q, request_options={"timeout": 60})
-                ans = response.text
+            ans = None
+            # कोटा सकिएमा स्वतः अर्को मोडलमा सिफ्ट हुने स्मार्ट प्रणाली
+            high_quota_models = [
+                "gemini-1.5-flash-8b-latest", 
+                "gemini-2.5-flash", 
+                "gemini-flash-latest"
+            ]
+            
+            for m_name in high_quota_models:
+                try:
+                    m = genai.GenerativeModel(m_name, system_instruction=prompt)
+                    res = m.generate_content(q, request_options={"timeout": 45})
+                    ans = res.text
+                    break
+                except Exception as e:
+                    # यदि एउटा मोडलमा कोटा पुग्यो भने अर्को मोडलबाट तत्काल उत्तर निकाल्ने
+                    continue
+            
+            if ans:
                 st.markdown(ans)
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
-            except Exception as err:
-                if "429" in str(err):
-                    st.warning("गुगलको निःशुल्क कोटा प्रति मिनेट सीमित छ। कृपया ३० सेकेन्ड पर्खेर फेरि सोध्नुहोस्।")
-                else:
-                    st.error(f"त्रुटि: {err}")
+            else:
+                st.warning("सबै मोडलहरू अहिले व्यस्त छन्। कृपया १ मिनेटपछि पुनः प्रयास गर्नुहोस्।")

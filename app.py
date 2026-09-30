@@ -11,7 +11,7 @@ if not api_key:
     st.error("कृपया Streamlit Secrets मा GEMINI_API_KEY राख्नुहोस्।")
     st.stop()
 
-# REST Transport
+# REST Mode
 genai.configure(api_key=api_key, transport="rest")
 
 NOTES_DIR = "uploaded_notes"
@@ -42,7 +42,7 @@ def get_notes():
             if f.endswith(".pdf"):
                 try:
                     reader = PdfReader(p)
-                    for page in reader.pages[:40]:
+                    for page in reader.pages[:20]:
                         t = page.extract_text()
                         if t:
                             text += t + "\n"
@@ -54,7 +54,7 @@ def get_notes():
                         text += file.read() + "\n"
                 except Exception:
                     pass
-    return text[:100000]
+    return text[:30000]
 
 notes_content = get_notes()
 
@@ -87,11 +87,11 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ स
         with st.spinner("उत्तर तयार गर्दै..."):
             ans = None
             last_err = None
-            # गुगलका उपलब्ध नयाँ मोडलहरू एक-एक गरी प्रयास गर्ने
-            for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]:
+            # सबैभन्दा नयाँ र छिटो चल्ने gemini-2.0-flash पहिले चलाउने
+            for model_name in ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"]:
                 try:
                     active_model = genai.GenerativeModel(model_name, system_instruction=prompt)
-                    response = active_model.generate_content(q, request_options={"timeout": 30})
+                    response = active_model.generate_content(q, request_options={"timeout": 90})
                     ans = response.text
                     break
                 except Exception as e:

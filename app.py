@@ -1,10 +1,8 @@
 import os
-import time
 import streamlit as st
 import google.generativeai as genai
 from pypdf import PdfReader
 
-# पेज कन्फिगरेसन
 st.set_page_config(
     page_title="NEA Level 5 Electrical - Ask To Me", 
     page_icon="⚡", 
@@ -23,7 +21,6 @@ NOTES_DIR = "uploaded_notes"
 if not os.path.exists(NOTES_DIR):
     os.makedirs(NOTES_DIR)
 
-# साइडबारमा नोट व्यवस्थापन
 with st.sidebar:
     st.markdown("### 📚 अध्ययन सामग्री (Admin)")
     uploaded_files = st.file_uploader("नयाँ नोट अपलोड गर्नुहोस् (PDF/TXT)", type=["pdf", "txt"], accept_multiple_files=True)
@@ -75,15 +72,14 @@ prompt = f"""
 2. ढाँचा: उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
 """
 
-model = genai.GenerativeModel("gemini-2.0-flash", system_instruction=prompt)
+# काम गर्ने आधिकारिक मोडल
+model = genai.GenerativeModel("gemini-flash-latest", system_instruction=prompt)
 
-# मुख्य वेबसाइट शीर्षक
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
 st.subheader("इलेक्ट्रिकल सुपरभाइजर — परीक्षा सहयोगी प्रणाली ('Ask To Me')")
 st.caption("पाठ्यक्रम (प्रथम र द्वितीय पत्र) सम्बन्धी कुनै पनि प्रश्न सोध्न सक्नुहुन्छ।")
 st.markdown("---")
 
-# च्याट हिस्ट्री व्यवस्थापन
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
@@ -91,7 +87,6 @@ for m in st.session_state.chat_history:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
 
-# विद्यार्थीले सिधै यहीँ प्रश्न सोध्ने बाकस
 if q := st.chat_input("तपाईंको प्रश्न यहाँ टाइप गर्नुहोस् (उदा: What is Buchholz relay? वा विद्युत चोरी नियन्त्रण ऐनका मुख्य बुँदा)..."):
     st.session_state.chat_history.append({"role": "user", "content": q})
     with st.chat_message("user"):
@@ -99,19 +94,13 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ ट
 
     with st.chat_message("assistant"):
         with st.spinner("उत्तर तयार गर्दै..."):
-            ans = None
-            # कोटा एरर आएमा ३ पटकसम्म स्वतः पुन: प्रयास गर्ने
-            for attempt in range(3):
-                try:
-                    response = model.generate_content(q, request_options={"timeout": 60})
-                    ans = response.text
-                    break
-                except Exception as err:
-                    if "429" in str(err) and attempt < 2:
-                        time.sleep(5)  # ५ सेकेन्ड पर्खेर फेरि सोध्ने
-                        continue
-                    else:
-                        ans = f"⚠️ अहिले धेरै प्रश्नहरू एकैपटक आएकाले सर्भर व्यस्त छ। कृपया केही सेकेन्ड पर्खेर पुन: सोध्नुहोस्।"
-            
-            st.markdown(ans)
-            st.session_state.chat_history.append({"role": "assistant", "content": ans})
+            try:
+                response = model.generate_content(q, request_options={"timeout": 60})
+                ans = response.text
+                st.markdown(ans)
+                st.session_state.chat_history.append({"role": "assistant", "content": ans})
+            except Exception as err:
+                if "429" in str(err):
+                    st.warning("गुगलको निःशुल्क कोटा प्रति मिनेट सीमित छ। कृपया ३० सेकेन्ड पर्खेर फेरि सोध्नुहोस्।")
+                else:
+                    st.error(f"त्रुटि: {err}")

@@ -3,7 +3,6 @@ import streamlit as st
 import google.generativeai as genai
 from pypdf import PdfReader
 
-# पेज कन्फिगरेसन
 st.set_page_config(
     page_title="NEA Level 5 Electrical - Ask To Me", 
     page_icon="⚡", 
@@ -73,9 +72,6 @@ system_rules = f"""
 2. ढाँचा: उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
 """
 
-# कुनै जटिल प्रतिबन्ध नभएको सीधा र भरपर्दो मोडल
-model = genai.GenerativeModel("gemini-flash-latest")
-
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
 st.subheader("इलेक्ट्रिकल सुपरभाइजर — परीक्षा सहयोगी प्रणाली ('Ask To Me')")
 st.caption("पाठ्यक्रम (प्रथम र द्वितीय पत्र) सम्बन्धी कुनै पनि प्रश्न सोध्न सक्नुहुन्छ।")
@@ -95,12 +91,31 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ ट
 
     with st.chat_message("assistant"):
         with st.spinner("उत्तर तयार गर्दै..."):
-            try:
-                # निर्देशन र प्रश्नलाई एउटैमा मिलाएर पठाउने (सबैभन्दा भरपर्दो विधि)
-                full_payload = f"{system_rules}\n\n---\nविद्यार्थीको प्रश्न:\n{q}"
-                response = model.generate_content(full_payload, request_options={"timeout": 60})
-                ans = response.text
+            ans = None
+            last_error = None
+            
+            # दैनिक ठूलो कोटा भएका मुख्य मोडलहरू (२० वटा लिमिट भएको मोडल हटाइयो)
+            production_models = [
+                "gemini-1.5-pro",
+                "gemini-2.0-flash",
+                "gemini-1.5-flash-8b",
+                "gemini-pro"
+            ]
+            
+            full_payload = f"{system_rules}\n\n---\nविद्यार्थीको प्रश्न:\n{q}"
+            
+            for m_name in production_models:
+                try:
+                    m = genai.GenerativeModel(m_name)
+                    res = m.generate_content(full_payload, request_options={"timeout": 60})
+                    ans = res.text
+                    break
+                except Exception as e:
+                    last_error = e
+                    continue
+            
+            if ans:
                 st.markdown(ans)
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
-            except Exception as err:
-                st.error(f"त्रुटि: {err}")
+            else:
+                st.error(f"त्रुटि: {last_error}")

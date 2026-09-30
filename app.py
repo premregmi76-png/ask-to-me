@@ -11,7 +11,7 @@ if not api_key:
     st.error("कृपया Streamlit Secrets मा GEMINI_API_KEY राख्नुहोस्।")
     st.stop()
 
-# Streamlit Cloud मा नअड्किने गरी REST मोडमा चलाउने
+# REST Transport
 genai.configure(api_key=api_key, transport="rest")
 
 NOTES_DIR = "uploaded_notes"
@@ -69,8 +69,6 @@ prompt = f"""
 2. उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
 """
 
-model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=prompt)
-
 st.title("⚡ NEA Level 5 Electrical - 'Ask To Me'")
 st.caption("नेपाल विद्युत प्राधिकरण तह-५ अध्ययन सहयोगी")
 
@@ -87,11 +85,20 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ स
         st.markdown(q)
     with st.chat_message("assistant"):
         with st.spinner("उत्तर तयार गर्दै..."):
-            try:
-                # ३० सेकेन्ड टाइमआउट
-                response = model.generate_content(q, request_options={"timeout": 30})
-                ans = response.text
+            ans = None
+            last_err = None
+            # गुगलका उपलब्ध नयाँ मोडलहरू एक-एक गरी प्रयास गर्ने
+            for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]:
+                try:
+                    active_model = genai.GenerativeModel(model_name, system_instruction=prompt)
+                    response = active_model.generate_content(q, request_options={"timeout": 30})
+                    ans = response.text
+                    break
+                except Exception as e:
+                    last_err = e
+            
+            if ans:
                 st.markdown(ans)
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
-            except Exception as err:
-                st.error(f"त्रुटि: {err}")
+            else:
+                st.error(f"त्रुटि: {last_err}")

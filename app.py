@@ -1,88 +1,118 @@
+import os
 import streamlit as st
+from groq import Groq
+from pypdf import PdfReader
 
+# पेज कन्फिगरेसन
 st.set_page_config(
-    page_title="NEA Level 5 Electrical - Study Portal", 
+    page_title="NEA Level 5 Electrical - Ask To Me", 
     page_icon="⚡", 
     layout="wide"
 )
 
-# तपाईंका १४ वटै मुख्य नोटहरू भएको वास्तविक नोटबुक लिङ्क
-PORTAL_URL = "https://gemini.google.com/notebook/10d1d5bd-f763-47b2-86d7-b403959adda5"
+# Groq API Key लिने
+api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
+if not api_key:
+    st.error("प्रणाली कन्फिगरेसन (GROQ_API_KEY) मिलाउन बाँकी छ।")
+    st.stop()
 
-# मुख्य हेडर
-st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
-st.subheader("प्राविधिक सेवा, इलेक्ट्रिकल समूह/उपसमूह, सुपरभाइजर पद — परीक्षा सहयोगी पोर्टल ('Ask To Me')")
-st.caption("खुला प्रतियोगितात्मक परीक्षा: प्रथम र द्वितीय पत्र विशेष अनलाइन तयारी")
+client = Groq(api_key=api_key)
 
-st.markdown("---")
+NOTES_DIR = "uploaded_notes"
+if not os.path.exists(NOTES_DIR):
+    os.makedirs(NOTES_DIR)
 
-# आधिकारिक जानकारी
-st.success("""
-### 📢 आधिकारिक जानकारी
-"यो हाम्रो नेपाल विद्युत प्राधिकरण (NEA) तह-५ तयारीका लागि तयार गरिएको आधिकारिक AI Study Portal हो। यसमा प्रथम र द्वितीय पत्रका सम्पूर्ण नोटहरू राखिएका छन्। तलको बक्समा जुनसुकै प्रश्न सोधेर तुरुन्तै परीक्षा-केन्द्रित उत्तर पाउन सक्नुहुन्छ।"
-""")
-
-# तपाईंका १४ वटै नोटहरूसँग सिधै जोड्ने मुख्य बटन
-st.link_button("🚀 यहाँ क्लिक गरी सम्पूर्ण नोटहरूसहितको AI पोर्टल खोल्नुहोस्", PORTAL_URL, type="primary", use_container_width=True)
-
-st.markdown("---")
-
-# ट्याबहरू
-tab1, tab2, tab3 = st.tabs(["📚 पाठ्यक्रम संरचना", "📝 नमुना प्रश्न-उत्तर (Model Q&A)", "💡 कसरी तयारी गर्ने?"])
-
-with tab1:
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-        ### प्रथम पत्र: सामान्य ज्ञान, गणित र कानून (१०० अङ्क)
-        1. **सामान्य ज्ञान (४५ अङ्क):** भूगोल, नदीनाला, आर्थिक/सामाजिक अवस्था, दिगो विकास, SAARC/BIMSTEC/EU र समसामयिक घटनाहरू।
-        2. **सामान्य गणित (१० अङ्क):** प्रतिशत, भिन्न, अनुपात, औसत, नाफा-नोक्सान, साधारण ब्याज, ऐकिक नियम।
-        3. **संस्थागत तथा व्यवस्थापकीय ज्ञान (२५ अङ्क):** जलविद्युत विकास, प्रमुख आयोजनाहरू, सुरक्षा तथा प्राथमिक उपचार, कम्प्युटर ज्ञान।
-        4. **कानून सम्बन्धी ज्ञान (२० अङ्क):** 
-           - नेपालको वर्तमान संविधान (भाग १ र ३)
-           - नेपाल विद्युत प्राधिकरण ऐन, २०४१
-           - विद्युत चोरी नियन्त्रण ऐन २०५८ र नियमावली २०५९
-           - विद्युत वितरण विनियमावली २०७८ र महसुल संकलन विनियमावली
-        """)
-    with col2:
-        st.markdown("""
-        ### द्वितीय पत्र: सेवा सम्बन्धी विस्तृत ज्ञान (१०० अङ्क)
-        **खण्ड (क) - ५० अङ्क:**
-        - Fundamentals: AC/DC Circuits, Ohm's & Kirchhoff's Laws
-        - Electrical Machines: Transformers, DC Motors & Generators, Alternators, Induction Motors
-        - Electrical Measurements: CT/PT, Energy Meters, Smart/TOD Meters
-        - Power Electronics & Power Plants: Hydro, Diesel, Solar, Load Factors
-        
-        **खण्ड (ख) - ५० अङ्क:**
-        - Control & Protection: Relays, Circuit Breakers (VCB, SF6), SCADA, PLCC
-        - Substation & Transmission: Sag, Tension, Corona Effect, Earthing, Busbars
-        - Distribution & Safety: Radial/Ring Systems, Tariff System, Safety Devices
-        """)
-
-with tab2:
-    st.markdown("### परीक्षामा सोधिने मुख्य नमुना प्रश्न-उत्तरहरू:")
-    with st.expander("❓ Buchholz Relay को कार्य सिद्धान्त के हो?"):
-        st.write("""
-        **उत्तर:**  
-        Buchholz Relay तेलमा डुबेका ट्रान्सफर्मरको भित्री गम्भीर समस्याहरू पत्ता लगाउन प्रयोग गरिने ग्यास-सञ्चालित सुरक्षा उपकरण हो। यो ट्रान्सफर्मरको मुख्य ट्याङ्क र कन्जर्भेटर ट्याङ्क जोड्ने पाइपको बीचमा राखिन्छ।
-        """)
-        
-    with st.expander("❓ नेपाल विद्युत प्राधिकरण ऐन, २०४१ अनुसार सञ्चालक समितिको गठन कसरी हुन्छ?"):
-        st.write("""
-        **उत्तर:**  
-        ऐनको दफा ७ अनुसार प्राधिकरणको सञ्चालक समितिमा ८ जना सदस्यहरू रहने व्यवस्था छ, जसको अध्यक्ष नेपाल सरकारको ऊर्जा, जलस्रोत तथा सिँचाइ मन्त्री वा राज्यमन्त्री रहने व्यवस्था छ।
-        """)
-
-    with tab3:
-        st.markdown("""
-        ### 🎯 पूर्ण परीक्षा तयारी कसरी गर्ने?
-        1. माथि रहेको मुख्य बटन थिच्नुहोस्।
-        2. त्यहाँ तपाईंका सम्पूर्ण १४ वटा पुस्तक तथा नोटहरूका आधारमा जे सोधे पनि तुरुन्तै सटीक उत्तर आउनेछ।
-        """)
-
-# साइडबार
+# साइडबार: नोटहरू अपलोड गर्ने ठाउँ
 with st.sidebar:
-    st.header("⚡ NEA Level 5 Portal")
-    st.write("नेपाल विद्युत प्राधिकरण तह-५ खुला प्रतियोगितात्मक परीक्षा सहयोगी")
+    st.markdown("### 📚 अध्ययन सामग्री व्यवस्थापन")
+    st.write("यहाँ नयाँ नोट अपलोड गर्नासाथ प्रणालीले यसैका आधारमा उत्तर दिनेछ।")
+    uploaded_files = st.file_uploader("नयाँ नोट अपलोड गर्नुहोस् (PDF/TXT)", type=["pdf", "txt"], accept_multiple_files=True)
+    if uploaded_files:
+        for file in uploaded_files:
+            with open(os.path.join(NOTES_DIR, file.name), "wb") as f:
+                f.write(file.getbuffer())
+        st.cache_data.clear()
+        st.success("नयाँ नोट सुरक्षित गरियो!")
+    
     st.markdown("---")
-    st.link_button("👉 सिधै AI पोर्टल खोल्नुहोस्", PORTAL_URL, use_container_width=True)
+    st.write("📁 **अपलोड भएका फाइलहरू:**")
+    files = os.listdir(NOTES_DIR)
+    for f in files:
+        st.caption(f"• {f}")
+
+# नोटहरूबाट टेक्स्ट पढ्ने
+@st.cache_data
+def get_notes():
+    text = ""
+    if os.path.exists(NOTES_DIR):
+        for f in os.listdir(NOTES_DIR):
+            p = os.path.join(NOTES_DIR, f)
+            if f.endswith(".pdf"):
+                try:
+                    reader = PdfReader(p)
+                    for page in reader.pages[:20]:
+                        t = page.extract_text()
+                        if t:
+                            text += t + "\n"
+                except Exception:
+                    pass
+            elif f.endswith(".txt"):
+                try:
+                    with open(p, "r", encoding="utf-8") as file:
+                        text += file.read() + "\n"
+                except Exception:
+                    pass
+    return text[:30000]
+
+notes_content = get_notes()
+
+# कडा शिक्षक नियम (तपाईंले हाल्नुभएको नोटबाट मात्र उत्तर दिने):
+system_prompt = f"""
+तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ (इलेक्ट्रिकल सुपरभाइजर) परीक्षा तयारीका लागि समर्पित एक विशेषज्ञ डिजिटल शिक्षक हुनुहुन्छ।
+
+उपलब्ध आधिकारिक नोट तथा सन्दर्भ सामग्रीहरू:
+{notes_content if notes_content else "हाल कुनै विशेष नोट अपलोड भएको छैन। सामान्य NEA तह-५ पाठ्यक्रम अनुसार सीमित रहनुहोस्।"}
+
+कडा नियमहरू (Strict Rules):
+१. तपाईंले उपलब्ध गराइएका नोटहरू र नेपाल विद्युत प्राधिकरण तह-५ को पाठ्यक्रम (प्रथम र द्वितीय पत्र) भित्र रहेर मात्र उत्तर दिनुहोस्।
+२. यदि विद्यार्थीले सोधेको प्रश्नको उत्तर यी नोटहरू वा पाठ्यक्रममा छैन भने, कुनै पनि बाहिरी गफ नलगाउनुहोस् र सिधै यो मात्र भन्नुहोस्:
+   "यो प्रश्नको उत्तर उपलब्ध नोट वा पाठ्यक्रममा समावेश छैन। कृपया नेपाल विद्युत प्राधिकरण तह-५ (इलेक्ट्रिकल) पाठ्यक्रम सम्बन्धी विषयका प्रश्नहरू मात्र सोध्नुहोला।"
+३. नेपालको इतिहास, चलचित्र, मनोरञ्जन वा अन्य असम्बन्धित विषय सोधिएमा पनि सिधै माथिको नियम २ अनुसार अस्वीकार गर्नुहोस्।
+४. पाठ्यक्रम भित्रको प्रश्न भएमा नेपाली वा अंग्रेजीमा परीक्षामा लेख्ने उत्कृष्ट बुँदागत ढाँचा (Bullet Points), सूत्र, र परिभाषासहित स्पष्ट उत्तर दिनुहोस्।
+"""
+
+# मुख्य वेबसाइट शीर्षक
+st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
+st.subheader("इलेक्ट्रिकल सुपरभाइजर — परीक्षा सहयोगी प्रणाली ('Ask To Me')")
+st.caption("उपलब्ध आधिकारिक नोटहरूका आधारमा परीक्षा केन्द्रित प्रश्न-उत्तर")
+st.markdown("---")
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+for m in st.session_state.chat_history:
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])
+
+# विद्यार्थीले सिधै यहीँ प्रश्न सोध्ने बाकस
+if q := st.chat_input("तपाईंको प्रश्न यहाँ टाइप गर्नुहोस् (उदा: What is Buchholz relay? वा नेपाल विद्युत प्राधिकरण ऐनका मुख्य बुँदा)..."):
+    st.session_state.chat_history.append({"role": "user", "content": q})
+    with st.chat_message("user"):
+        st.markdown(q)
+
+    with st.chat_message("assistant"):
+        with st.spinner("नोटहरू हेरेर उत्तर तयार गर्दै..."):
+            try:
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": q}
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.3,
+                )
+                ans = chat_completion.choices[0].message.content
+                st.markdown(ans)
+                st.session_state.chat_history.append({"role": "assistant", "content": ans})
+            except Exception as err:
+                st.error(f"त्रुटि देखा पर्यो: {err}")

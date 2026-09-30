@@ -1,6 +1,7 @@
 import os
+import json
+import urllib.request
 import streamlit as st
-from groq import Groq
 from pypdf import PdfReader
 
 # पेज कन्फिगरेसन
@@ -15,8 +16,6 @@ api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 if not api_key:
     st.error("प्रणाली कन्फिगरेसन (GROQ_API_KEY) मिलाउन बाँकी छ।")
     st.stop()
-
-client = Groq(api_key=api_key)
 
 NOTES_DIR = "uploaded_notes"
 if not os.path.exists(NOTES_DIR):
@@ -103,15 +102,29 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ ट
     with st.chat_message("assistant"):
         with st.spinner("नोटहरू हेरेर उत्तर तयार गर्दै..."):
             try:
-                chat_completion = client.chat.completions.create(
-                    messages=[
+                req_data = json.dumps({
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": q}
                     ],
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.3,
+                    "temperature": 0.3
+                }).encode("utf-8")
+
+                req = urllib.request.Request(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    data=req_data,
+                    headers={
+                        "Authorization": f"Bearer {api_key.strip()}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "StreamlitApp"
+                    }
                 )
-                ans = chat_completion.choices[0].message.content
+
+                with urllib.request.urlopen(req, timeout=45) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    ans = result["choices"][0]["message"]["content"]
+                
                 st.markdown(ans)
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
             except Exception as err:

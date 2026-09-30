@@ -3,6 +3,7 @@ import streamlit as st
 import google.generativeai as genai
 from pypdf import PdfReader
 
+# पेज कन्फिगरेसन
 st.set_page_config(
     page_title="NEA Level 5 Electrical - Ask To Me", 
     page_icon="⚡", 
@@ -72,7 +73,7 @@ system_rules = f"""
 2. ढाँचा: उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
 """
 
-# नयाँ AQ. Key लाई समर्थन गर्ने आधिकारिक मोडल
+# कुनै जटिल प्रतिबन्ध नभएको सीधा र भरपर्दो मोडल
 model = genai.GenerativeModel("gemini-flash-latest")
 
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
@@ -95,6 +96,7 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ ट
     with st.chat_message("assistant"):
         with st.spinner("उत्तर तयार गर्दै..."):
             try:
+                # निर्देशन र प्रश्नलाई एउटैमा मिलाएर पठाउने (सबैभन्दा भरपर्दो विधि)
                 full_payload = f"{system_rules}\n\n---\nविद्यार्थीको प्रश्न:\n{q}"
                 response = model.generate_content(full_payload, request_options={"timeout": 60})
                 ans = response.text

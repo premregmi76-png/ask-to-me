@@ -42,7 +42,7 @@ def get_notes():
             if f.endswith(".pdf"):
                 try:
                     reader = PdfReader(p)
-                    for page in reader.pages[:20]:
+                    for page in reader.pages[:25]:
                         t = page.extract_text()
                         if t:
                             text += t + "\n"
@@ -69,6 +69,9 @@ prompt = f"""
 2. उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
 """
 
+# सिधै प्रमाणित भएको gemini-flash-latest प्रयोग गर्ने
+model = genai.GenerativeModel("gemini-flash-latest", system_instruction=prompt)
+
 st.title("⚡ NEA Level 5 Electrical - 'Ask To Me'")
 st.caption("नेपाल विद्युत प्राधिकरण तह-५ अध्ययन सहयोगी")
 
@@ -85,20 +88,13 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ स
         st.markdown(q)
     with st.chat_message("assistant"):
         with st.spinner("उत्तर तयार गर्दै..."):
-            ans = None
-            last_err = None
-            # सबैभन्दा नयाँ र छिटो चल्ने gemini-2.0-flash पहिले चलाउने
-            for model_name in ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"]:
-                try:
-                    active_model = genai.GenerativeModel(model_name, system_instruction=prompt)
-                    response = active_model.generate_content(q, request_options={"timeout": 90})
-                    ans = response.text
-                    break
-                except Exception as e:
-                    last_err = e
-            
-            if ans:
+            try:
+                response = model.generate_content(q, request_options={"timeout": 60})
+                ans = response.text
                 st.markdown(ans)
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
-            else:
-                st.error(f"त्रुटि: {last_err}")
+            except Exception as err:
+                if "429" in str(err):
+                    st.warning("गुगलको निःशुल्क कोटा प्रति मिनेट केही प्रश्न मात्र सीमित छ। कृपया ३० सेकेन्ड पर्खेर फेरि सोध्नुहोस्।")
+                else:
+                    st.error(f"त्रुटि: {err}")

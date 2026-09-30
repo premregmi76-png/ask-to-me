@@ -3,6 +3,7 @@ import streamlit as st
 import google.generativeai as genai
 from pypdf import PdfReader
 
+# पेज कन्फिगरेसन
 st.set_page_config(
     page_title="NEA Level 5 Electrical - Ask To Me", 
     page_icon="⚡", 
@@ -45,7 +46,7 @@ def get_notes():
             if f.endswith(".pdf"):
                 try:
                     reader = PdfReader(p)
-                    for page in reader.pages[:15]:
+                    for page in reader.pages[:10]:
                         t = page.extract_text()
                         if t:
                             text += t + "\n"
@@ -57,11 +58,11 @@ def get_notes():
                         text += file.read() + "\n"
                 except Exception:
                     pass
-    return text[:15000]
+    return text[:10000]
 
 notes_content = get_notes()
 
-prompt = f"""
+system_rules = f"""
 तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ (इलेक्ट्रिकल सुपरभाइजर) खुला प्रतियोगितात्मक परीक्षाका लागि विशेषज्ञ शिक्षक र डिजिटल सहायक ('Ask To Me') हुनुहुन्छ।
 
 उपलब्ध आधिकारिक नोटहरू:
@@ -71,6 +72,9 @@ prompt = f"""
 1. भाषा: विद्यार्थीले नेपालीमा सोधे नेपालीमा, अंग्रेजीमा सोधे अंग्रेजीमा वा आवश्यकता अनुसार स्पष्ट प्राविधिक भाषामा उत्तर दिनुहोस्।
 2. ढाँचा: उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
 """
+
+# कुनै जटिल प्रतिबन्ध नभएको सीधा र भरपर्दो मोडल
+model = genai.GenerativeModel("gemini-flash-latest")
 
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
 st.subheader("इलेक्ट्रिकल सुपरभाइजर — परीक्षा सहयोगी प्रणाली ('Ask To Me')")
@@ -91,26 +95,12 @@ if q := st.chat_input("तपाईंको प्रश्न यहाँ ट
 
     with st.chat_message("assistant"):
         with st.spinner("उत्तर तयार गर्दै..."):
-            ans = None
-            # कोटा सकिएमा स्वतः अर्को मोडलमा सिफ्ट हुने स्मार्ट प्रणाली
-            high_quota_models = [
-                "gemini-1.5-flash-8b-latest", 
-                "gemini-2.5-flash", 
-                "gemini-flash-latest"
-            ]
-            
-            for m_name in high_quota_models:
-                try:
-                    m = genai.GenerativeModel(m_name, system_instruction=prompt)
-                    res = m.generate_content(q, request_options={"timeout": 45})
-                    ans = res.text
-                    break
-                except Exception as e:
-                    # यदि एउटा मोडलमा कोटा पुग्यो भने अर्को मोडलबाट तत्काल उत्तर निकाल्ने
-                    continue
-            
-            if ans:
+            try:
+                # निर्देशन र प्रश्नलाई एउटैमा मिलाएर पठाउने (सबैभन्दा भरपर्दो विधि)
+                full_payload = f"{system_rules}\n\n---\nविद्यार्थीको प्रश्न:\n{q}"
+                response = model.generate_content(full_payload, request_options={"timeout": 60})
+                ans = response.text
                 st.markdown(ans)
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
-            else:
-                st.warning("सबै मोडलहरू अहिले व्यस्त छन्। कृपया १ मिनेटपछि पुनः प्रयास गर्नुहोस्।")
+            except Exception as err:
+                st.error(f"त्रुटि: {err}")

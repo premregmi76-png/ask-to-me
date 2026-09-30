@@ -1,88 +1,126 @@
+import os
 import streamlit as st
+import google.generativeai as genai
+from pypdf import PdfReader
 
+# पेज कन्फिगरेसन (आफ्नै ब्रान्डिङ)
 st.set_page_config(
-    page_title="NEA Level 5 Electrical - Study Portal", 
+    page_title="NEA Level 5 Electrical - Ask To Me", 
     page_icon="⚡", 
     layout="wide"
 )
 
-PORTAL_URL = "https://gemini.google.com/notebook/95067217-c097-43c8-9ffa-fe053d411f02"
+# API Key
+api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+if not api_key:
+    st.error("प्रणाली कन्फिगरेसन मिलाउन बाँकी छ।")
+    st.stop()
 
-# मुख्य हेडर
-st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
-st.subheader("इलेक्ट्रिकल सुपरभाइजर — परीक्षा सहयोगी पोर्टल ('Ask To Me')")
-st.caption("खुला प्रतियोगितात्मक परीक्षा: प्रथम र द्वितीय पत्र विशेष तयारी")
+# REST Mode
+genai.configure(api_key=api_key, transport="rest")
 
-st.markdown("---")
+NOTES_DIR = "uploaded_notes"
+if not os.path.exists(NOTES_DIR):
+    os.makedirs(NOTES_DIR)
 
-# मुख्य AI सहायक बटन
-st.info("💡 **24/7 AI शिक्षकसँग असीमित प्रश्न सोध्न तलको मुख्य बटन थिच्नुहोस्:**")
-st.link_button("🚀 यहाँ क्लिक गरी AI स्टडी असिस्टेन्ट खोल्नुहोस् (Ask AI)", PORTAL_URL, type="primary", use_container_width=True)
-
-st.markdown("---")
-
-# ट्याबहरू
-tab1, tab2, tab3 = st.tabs(["📚 पाठ्यक्रम संरचना", "📝 नमुना प्रश्न-उत्तर (Model Q&A)", "ℹ️ कसरी तयारी गर्ने?"])
-
-with tab1:
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-        ### प्रथम पत्र: सामान्य ज्ञान, गणित र कानून (१०० अङ्क)
-        1. **सामान्य ज्ञान (४५ अङ्क):** भूगोल, नदीनाला, इतिहास, समसामयिक, SAARC/BIMSTEC/EU
-        2. **सामान्य गणित (१० अङ्क):** प्रतिशत, नाफा-नोक्सान, ब्याज, अनुपात, औसत, ऐकिक नियम
-        3. **संस्थागत तथा व्यवस्थापकीय ज्ञान (२५ अङ्क):** विद्युत विकास, जलविद्युत आयोजना, सुरक्षा र प्राथमिक उपचार, कम्प्युटर
-        4. **कानून सम्बन्धी ज्ञान (२० अङ्क):** 
-           - नेपालको संविधान (भाग १ र ३)
-           - नेपाल विद्युत प्राधिकरण ऐन, २०४१
-           - विद्युत चोरी नियन्त्रण ऐन २०५८ र नियमावली २०५९
-           - विद्युत वितरण विनियमावली २०७८ र महसुल संकलन विनियमावली
-        """)
-    with col2:
-        st.markdown("""
-        ### द्वितीय पत्र: सेवा सम्बन्धी विस्तृत ज्ञान (१०० अङ्क)
-        **खण्ड (क) - ५० अङ्क:**
-        - Fundamentals of AC/DC, Ohm's & Kirchhoff's Laws
-        - Electrical Machines (Transformers, DC Motors/Generators, Alternators, Induction Motors)
-        - Electrical Measurements (Meters, CT/PT, Smart/TOD Meters)
-        - Power Electronics & Power Plants (Hydro, Diesel, Solar)
-        
-        **खण्ड (ख) - ५० अङ्क:**
-        - Control & Protection (Relays, Circuit Breakers, SCADA, PLCC)
-        - Substation & Transmission Line (Sag, Corona, Earthing, Busbars)
-        - Distribution & Consumer Services (Tariff, Energy Meters, Safety)
-        """)
-
-with tab2:
-    st.markdown("### परीक्षामा सोधिने मुख्य नमुना प्रश्न-उत्तरहरू:")
-    with st.expander("❓ Buchholz Relay को कार्य सिद्धान्त के हो?"):
-        st.write("""
-        **उत्तर:**  
-        Buchholz Relay तेलमा डुबेका (Oil-immersed) ट्रान्सफर्मरको भित्री गम्भीर समस्याहरू (Internal Faults) पत्ता लगाउन प्रयोग गरिने ग्यास-सञ्चालित (Gas-actuated) सुरक्षा उपकरण हो। यो ट्रान्सफर्मरको मुख्य ट्याङ्क र कन्जर्भेटर ट्याङ्क जोड्ने पाइपको बीचमा राखिन्छ।
-        """)
-        
-    with st.expander("❓ नेपाल विद्युत प्राधिकरण ऐन, २०४१ अनुसार सञ्चालक समितिको गठन कसरी हुन्छ?"):
-        st.write("""
-        **उत्तर:**  
-        ऐनको दफा ७ अनुसार प्राधिकरणको सञ्चालक समितिमा ८ जना सदस्यहरू रहने व्यवस्था छ, जसको अध्यक्ष नेपाल सरकारको ऊर्जा, जलस्रोत तथा सिँचाइ मन्त्री वा राज्यमन्त्री रहने व्यवस्था छ।
-        """)
-
-    with st.expander("❓ Corona Effect भनेको के हो?"):
-        st.write("""
-        **उत्तर:**  
-        हाई भोल्टेज ट्रान्समिसन लाइनमा कन्डक्टरहरूको वरिपरिको हावाको डाइइलेक्ट्रिक स्ट्रेन्थ भन्दा भोल्टेज बढी भएर हावा आयोनिकरण हुँदा बैजनी रङको चमक (Violet Glow), हिसिङ आवाज र ओजोन ग्यास निस्कने प्रक्रियालाई Corona Effect भनिन्छ।
-        """)
-
-with tab3:
-    st.markdown("""
-    ### 🎯 पूर्ण परीक्षा तयारी कसरी गर्ने?
-    1. माथि रहेको **"🚀 यहाँ क्लिक गरी AI स्टडी असिस्टेन्ट खोल्नुहोस्"** बटन थिच्नुहोस्।
-    2. स्क्रिनमा खुल्ने बक्समा आफ्ना सम्पूर्ण प्रश्नहरू सोध्नुहोस्।
-    3. AI ले उपलब्ध आधिकारिक पाठ्यक्रम र नोटहरू अनुसार परीक्षामा लेख्ने शैलीमा उत्तर दिनेछ।
-    """)
-
-# साइडबार
+# साइडबारमा केवल नोट व्यवस्थापन
 with st.sidebar:
-    st.header("⚡ NEA Level 5 Portal")
-    st.write("नेपाल विद्युत प्राधिकरण तह-५ खुला प्रतियोगितात्मक परीक्षा सहयोगी")
-    st.markdown
+    st.markdown("### 📚 अध्ययन सामग्री (Admin)")
+    uploaded_files = st.file_uploader("नयाँ नोट अपलोड गर्नुहोस् (PDF/TXT)", type=["pdf", "txt"], accept_multiple_files=True)
+    if uploaded_files:
+        for file in uploaded_files:
+            with open(os.path.join(NOTES_DIR, file.name), "wb") as f:
+                f.write(file.getbuffer())
+        st.cache_data.clear()
+        st.success("नयाँ सामग्री सुरक्षित गरियो!")
+    
+    st.markdown("---")
+    st.write("📁 **अपलोड भएका फाइलहरू:**")
+    for f in os.listdir(NOTES_DIR):
+        st.caption(f"• {f}")
+
+@st.cache_data
+def get_notes():
+    text = ""
+    if os.path.exists(NOTES_DIR):
+        for f in os.listdir(NOTES_DIR):
+            p = os.path.join(NOTES_DIR, f)
+            if f.endswith(".pdf"):
+                try:
+                    reader = PdfReader(p)
+                    for page in reader.pages[:10]:
+                        t = page.extract_text()
+                        if t:
+                            text += t + "\n"
+                except Exception:
+                    pass
+            elif f.endswith(".txt"):
+                try:
+                    with open(p, "r", encoding="utf-8") as file:
+                        text += file.read() + "\n"
+                except Exception:
+                    pass
+    return text[:10000]
+
+notes_content = get_notes()
+
+# शिक्षकको रूपमा उत्तर दिने नियमहरू
+system_rules = f"""
+तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ (इलेक्ट्रिकल सुपरभाइजर) खुला प्रतियोगितात्मक परीक्षाका लागि एक विशेषज्ञ शिक्षक र डिजिटल सहायक ('Ask To Me') हुनुहुन्छ।
+
+उपलब्ध आधिकारिक नोटहरू:
+{notes_content if notes_content else "पाठ्यक्रम अनुसार उत्तर दिनुहोस्।"}
+
+नियमहरू:
+1. भाषा: विद्यार्थीले नेपालीमा सोधे नेपालीमा, अंग्रेजीमा सोधे अंग्रेजीमा वा आवश्यकता अनुसार स्पष्ट प्राविधिक भाषामा उत्तर दिनुहोस्।
+2. ढाँचा: उत्तर परीक्षाको शैलीमा बुँदागत (Bullet Points), सूत्र, र परिभाषा स्पष्ट खुलाएर दिनुहोस्।
+3. तपाईं केवल NEA तह-५ परीक्षा सहयोगी हुनुहुन्छ। कुनै पनि बाहिरी कम्पनी वा प्रविधिको नाम नलिनुहोस्।
+"""
+
+# नयाँ API Key सँग सिधै चल्ने मोडल
+model = genai.GenerativeModel("gemini-flash-latest")
+
+# मुख्य वेबसाइट हेडर (पूर्ण रूपमा आफ्नै पहिचान)
+st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
+st.subheader("इलेक्ट्रिकल सुपरभाइजर — परीक्षा सहयोगी च्याट प्रणाली ('Ask To Me')")
+st.caption("पाठ्यक्रम (प्रथम पत्र: सामान्य ज्ञान, गणित, कानून र द्वितीय पत्र: इलेक्ट्रिकल इन्जिनियरिङ) सम्बन्धी कुनै पनि प्रश्न सोध्नुहोस्।")
+st.markdown("---")
+
+# दोहोरिने प्रश्नहरू तुरुन्त दिन क्यास मेमोरी
+if "faq_cache" not in st.session_state:
+    st.session_state.faq_cache = {}
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# पुरानो कुराकानी स्क्रिनमा देखाउने
+for m in st.session_state.chat_history:
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])
+
+# विद्यार्थीले सिधै यहीँ प्रश्न टाइप गर्ने बक्स
+if q := st.chat_input("तपाईंको प्रश्न यहाँ टाइप गर्नुहोस् (उदा: What is Buchholz relay? वा विद्युत चोरी नियन्त्रण ऐनका मुख्य बुँदा)..."):
+    st.session_state.chat_history.append({"role": "user", "content": q})
+    with st.chat_message("user"):
+        st.markdown(q)
+
+    with st.chat_message("assistant"):
+        clean_q = q.strip().lower()
+        if clean_q in st.session_state.faq_cache:
+            ans = st.session_state.faq_cache[clean_q]
+            st.markdown(ans)
+            st.session_state.chat_history.append({"role": "assistant", "content": ans})
+        else:
+            with st.spinner("उत्तर तयार गर्दै..."):
+                try:
+                    full_payload = f"{system_rules}\n\n---\nविद्यार्थीको प्रश्न:\n{q}"
+                    response = model.generate_content(full_payload, request_options={"timeout": 60})
+                    ans = response.text
+                    st.markdown(ans)
+                    st.session_state.chat_history.append({"role": "assistant", "content": ans})
+                    st.session_state.faq_cache[clean_q] = ans
+                except Exception as err:
+                    if "429" in str(err):
+                        st.warning("अहिले धेरै विद्यार्थीहरू सक्रिय रहेकाले सर्भर व्यस्त छ। कृपया केही सेकेन्ड पर्खेर पुन: सोध्नुहोस्।")
+                    else:
+                        st.error(f"त्रुटि: {err}")

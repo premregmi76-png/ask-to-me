@@ -22,7 +22,6 @@ def setting(name, default=""):
 
 
 api_key = setting("GROQ_API_KEY")
-model = setting("GROQ_MODEL", "llama-3.3-70b-versatile")
 model = setting("GROQ_MODEL", "openai/gpt-oss-20b")
 
 
@@ -149,7 +148,6 @@ if question:
                         {"role": "user", "content": question},
                     ],
                     "temperature": 0.3,
-                    "max_completion_tokens": 1024,
                     "max_completion_tokens": 4096,
                 }
                 if model in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}:
@@ -167,9 +165,6 @@ if question:
                 )
                 with urllib.request.urlopen(request, timeout=45) as response:
                     result = json.loads(response.read().decode("utf-8"))
-                answer = result["choices"][0]["message"]["content"]
-                if not isinstance(answer, str) or not answer.strip():
-                    raise ValueError("Empty answer")
                 answer, truncated = read_answer(result)
                 st.markdown(answer)
                 if truncated:
@@ -198,5 +193,4 @@ if question:
             except (json.JSONDecodeError, UnicodeDecodeError):
                 st.error("API बाट पढ्न मिल्ने JSON response आएन। पछि प्रयास गर्नुहोस्।")
             except (ValueError, KeyError, IndexError, TypeError):
-                st.error("API बाट अपेक्षित उत्तर आएन। फेरि प्रयास गर्नुहोस्।")
                 st.error("API response पढ्दा data को ढाँचा मिलेन।")

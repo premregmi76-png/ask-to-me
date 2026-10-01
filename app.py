@@ -36,26 +36,6 @@ NOTES_DIR = "uploaded_notes"
 if not os.path.exists(NOTES_DIR):
     os.makedirs(NOTES_DIR)
 
-# Google बाट सोझै सक्रिय मोडलहरूको सूची तान्ने फङ्सन
-def get_live_models(k):
-    if not k:
-        return []
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={k.strip()}"
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            models = [
-                m["name"].replace("models/", "")
-                for m in data.get("models", [])
-                if "generateContent" in m.get("supportedGenerationMethods", [])
-            ]
-            flash = [m for m in models if "flash" in m.lower()]
-            other = [m for m in models if "flash" not in m.lower()]
-            return flash + other
-    except Exception:
-        return []
-
 with st.sidebar:
     st.markdown("### ⚙️ Google Gemini सेटिङहरू")
     if not api_key:
@@ -66,37 +46,13 @@ with st.sidebar:
         )
         st.markdown("[👉 यहाँ क्लिक गरी नि:शुल्क Gemini Key लिनुहोस्](https://aistudio.google.com)")
 
-    live_models = get_live_models(api_key) if api_key else []
-    
-    if live_models:
-        selected_model = st.selectbox("सक्रिय Gemini Model (Google द्वारा अनुमोदित):", live_models, index=0)
-    else:
-        selected_model = st.selectbox(
-            "Gemini Model छान्नुहोस्:", 
-            ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"],
-            index=0
-        )
-
-    # API Key जाँच्ने परीक्षण बटन
-    if st.button("🔌 API Key परीक्षण गर्नुहोस् (Test Connection)"):
-        if not api_key:
-            st.warning("कृपया पहिले API Key राख्नुहोस्।")
-        else:
-            try:
-                test_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key.strip()}"
-                req = urllib.request.Request(test_url)
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    m_names = [m["name"].replace("models/", "") for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-                    st.success(f"सफल भयो! तपाईंका लागि सक्रिय मोडल: {m_names[0]}")
-            except urllib.error.HTTPError as err:
-                err_body = err.read().decode("utf-8", errors="ignore")
-                st.error(f"Google ले Key अस्वीकार गर्यो ({err.code}): {err_body}")
-            except Exception as e:
-                st.error(f"जडान हुन सकेन: {e}")
+    # Google ले तोकेको आधिकारिक नयाँ मोडल
+    selected_model = "gemini-3.8-flash"
+    st.caption(f"🤖 **सक्रिय मोडल:** `{selected_model}`")
 
     st.markdown("---")
     st.markdown("### 📚 नोट व्यवस्थापन (Upload & Manage)")
+    st.caption("यहाँ नयाँ नोट अपलोड गर्दा पुराना नोटहरू पनि सुरक्षित रहन्छन्।")
     
     uploaded_files = st.file_uploader(
         "नयाँ नोट थप्नुहोस् (PDF/TXT):", 
@@ -197,7 +153,7 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
         st.markdown(q)
 
     with st.chat_message("assistant"):
-        with st.spinner("Gemini AI ले नोटहरू गहन अध्ययन गरी उत्तर तयार गर्दै..."):
+        with st.spinner("Gemini AI ले नोटहरू अध्ययन गरी उत्तर तयार गर्दै..."):
             trimmed_notes = all_notes_text[:80000]
 
             system_prompt = f"""तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ इलेक्ट्रिकल सुपरभाइजर परीक्षाको आधिकारिक विशेषज्ञ प्रशिक्षक हुनुहुन्छ।
@@ -241,8 +197,8 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
             }
             req_data = json.dumps(payload).encode("utf-8")
 
-            target_model = selected_model if selected_model else "gemini-2.5-flash"
-            endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={api_key.strip()}"
+            # Google ले तोकेको gemini-3.8-flash मा सिधै अनुरोध
+            endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key.strip()}"
 
             try:
                 req = urllib.request.Request(

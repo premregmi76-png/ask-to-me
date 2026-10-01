@@ -25,6 +25,18 @@ api_key = setting("GROQ_API_KEY")
 model = setting("GROQ_MODEL", "openai/gpt-oss-20b")
 
 
+def key_problem(value):
+    if not value:
+        return "Chat चलाउन Streamlit Secrets मा GROQ_API_KEY राख्नुहोस्।"
+    if not value.isascii() or any(c.isspace() or ord(c) < 33 or ord(c) == 127 for c in value):
+        return (
+            "GROQ_API_KEY मा नमिल्ने अक्षर वा खाली ठाउँ छ। "
+            "Groq Console बाट वास्तविक API key copy गरेर Secrets मा राख्नुहोस्। "
+            "उदाहरणमा दिइएको नेपाली वाक्यलाई key को ठाउँमा नराख्नुहोस्।"
+        )
+    return ""
+
+
 class ResponseProblem(Exception):
     pass
 
@@ -130,16 +142,18 @@ for message in st.session_state.chat_history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if not api_key:
-    st.warning("Chat चलाउन Streamlit Secrets मा GROQ_API_KEY राख्नुहोस्।")
+configuration_error = key_problem(api_key)
+if configuration_error:
+    st.warning(configuration_error)
 
-question = st.chat_input("तपाईंको प्रश्न लेख्नुहोस्…", disabled=not api_key)
+question = st.chat_input("तपाईंको प्रश्न लेख्नुहोस्…", disabled=bool(configuration_error))
 if question:
     st.session_state.chat_history.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)
     with st.chat_message("assistant"):
         with st.spinner("उत्तर तयार गर्दै…"):
+            stage = "request तयार गर्दा"
             try:
                 payload = {
                     "model": model,
@@ -163,9 +177,13 @@ if question:
                     },
                     method="POST",
                 )
+                stage = "API मा request पठाउँदा"
                 with urllib.request.urlopen(request, timeout=45) as response:
+                    stage = "API response पढ्दा"
                     result = json.loads(response.read().decode("utf-8"))
+                stage = "अन्तिम उत्तर निकाल्दा"
                 answer, truncated = read_answer(result)
+                stage = "उत्तर देखाउँदा"
                 st.markdown(answer)
                 if truncated:
                     st.warning("Token सीमा पुगेकाले यो उत्तर अपूरो हुन सक्छ। प्रश्नलाई सानो भागमा सोध्नुहोस्।")
@@ -190,7 +208,9 @@ if question:
                 st.error("Groq सँग सम्पर्क हुन सकेन वा समय सकियो। केही समयपछि प्रयास गर्नुहोस्।")
             except ResponseProblem as err:
                 st.error(str(err))
+            except UnicodeEncodeError:
+                st.error(f"{stage}: अक्षर encoding मिलेन (UnicodeEncodeError)। API key मा अनावश्यक अक्षर छ कि जाँच्नुहोस्।")
             except (json.JSONDecodeError, UnicodeDecodeError):
                 st.error("API बाट पढ्न मिल्ने JSON response आएन। पछि प्रयास गर्नुहोस्।")
-            except (ValueError, KeyError, IndexError, TypeError):
-                st.error("API response पढ्दा data को ढाँचा मिलेन।")
+            except (ValueError, KeyError, IndexError, TypeError) as err:
+                st.error(f"{stage}: {type(err).__name__}। यो सन्देश support लाई पठाउनुहोस्।")

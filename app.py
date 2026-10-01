@@ -36,12 +36,11 @@ with st.sidebar:
     if not api_key:
         api_key = st.text_input("Groq API Key राख्नुहोस्:", type="password")
     
-    # नेपाली राम्रो लेख्ने Qwen मोडललाई पहिलो प्राथमिकतामा राखिएको छ
     selected_model = st.selectbox(
         "AI Model छान्नुहोस्:",
         ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"],
         index=0,
-        help="Qwen मोडलले नेपाली भाषामा धेरै राम्रो र शुद्ध उत्तर दिन्छ।"
+        help="Qwen मोडलले नेपाली, रोमन नेपाली र प्राविधिक उत्तर धेरै राम्रो बुझ्छ।"
     )
 
     st.markdown("---")
@@ -95,8 +94,43 @@ with st.sidebar:
     else:
         st.info("कुनै नोट अपलोड गरिएको छैन।")
 
-# रेट लिमिट (TPM) रोक्न प्रश्नसँग सम्बन्धित अंश मात्र छान्ने
-def get_relevant_context(full_text, query, max_chars=3500):
+# रोमन नेपाली शब्दहरू हटाउन सूची
+ROMAN_STOPWORDS = {
+    "k", "ko", "ma", "le", "lai", "bata", "bhaneko", "bujhinchha", "ho", "hunchha", 
+    "chha", "chhan", "thiyo", "kin", "kina", "kasari", "kun", "kati", "barema", 
+    "bataunus", "lekhnus", "gareko", "garne", "hune", "ra", "ani", "wa", "athawa", 
+    "yo", "tyo", "yesko", "tyesko", "haru", "haruko", "euta", "duita", "nepali"
+}
+
+# प्राविधिक शब्दहरूको नेपाली-अंग्रेजी जोडी (ताकि रोमन वा अंग्रेजीमा सोधे पनि नेपाली नोट भेटियोस्)
+KEYWORD_MAP = {
+    "transformer": ["ट्रान्सफर्मर", "transformer"],
+    "generator": ["जेनेरेटर", "generator"],
+    "motor": ["मोटर", "motor"],
+    "working": ["कार्य", "काम", "working"],
+    "principle": ["कार्यसिद्धान्त", "सिद्धान्त", "principle"],
+    "transmission": ["प्रसारण", "transmission"],
+    "distribution": ["वितरण", "distribution"],
+    "substation": ["सबस्टेसन", "substation"],
+    "relay": ["रिले", "relay"],
+    "breaker": ["ब्रेकर", "breaker"],
+    "circuit": ["सर्किट", "circuit"],
+    "efficiency": ["दक्षता", "efficiency"],
+    "earthing": ["अर्थिङ", "earthing", "grounding"],
+    "cooling": ["कुलीङ", "cooling"],
+    "fault": ["फल्ट", "खराबी", "fault"],
+    "protection": ["सुरक्षा", "protection"],
+    "loss": ["हानि", "नोक्सानी", "loss", "losses"],
+    "losses": ["हानि", "नोक्सानी", "loss", "losses"],
+    "type": ["प्रकार", "वर्गीकरण", "type", "types"],
+    "types": ["प्रकार", "वर्गीकरण", "type", "types"],
+    "difference": ["फरक", "तुलना", "difference", "comparison"],
+    "advantage": ["फाइदा", "लाभ", "advantage"],
+    "disadvantage": ["बेफाइदा", "हानि", "disadvantage"]
+}
+
+# स्मार्ट नोट खोजी फङ्सन (४,८०० क्यारेक्टर सम्म अध्ययन गर्ने)
+def get_relevant_context(full_text, query, max_chars=4800):
     if not full_text or len(full_text) <= max_chars:
         return full_text
 
@@ -104,18 +138,29 @@ def get_relevant_context(full_text, query, max_chars=3500):
     if not paragraphs:
         return full_text[:max_chars]
 
-    query_words = set([w.lower() for w in query.replace("?", "").replace("।", "").split() if len(w) > 1])
+    # १. रोमन नेपाली हटाएर मुख्य प्राविधिक शब्द निकाल्ने
+    clean_words = [
+        w.lower().replace("?", "").replace("।", "").replace(",", "") 
+        for w in query.split() if len(w) > 1 and w.lower() not in ROMAN_STOPWORDS
+    ]
+    
+    # २. अंग्रेजी र नेपाली दुवै पर्यायवाची शब्दहरू थप्ने
+    expanded_search = set(clean_words)
+    for w in clean_words:
+        if w in KEYWORD_MAP:
+            expanded_search.update(KEYWORD_MAP[w])
+
     scored = []
     for i, p in enumerate(paragraphs):
         p_lower = p.lower()
-        score = sum(1 for w in query_words if w in p_lower)
+        score = sum(1 for w in expanded_search if w in p_lower)
         scored.append((score, i, p))
 
     scored.sort(key=lambda x: x[0], reverse=True)
     selected = []
     curr_len = 0
     for score, idx, p in scored:
-        if score > 0 or len(selected) < 2:
+        if score > 0 or len(selected) < 3:
             if curr_len + len(p) + 2 <= max_chars:
                 selected.append((idx, p))
                 curr_len += len(p) + 2
@@ -128,8 +173,8 @@ def get_relevant_context(full_text, query, max_chars=3500):
 
 # मुख्य इन्टरफेस
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
-st.subheader("इलेक्ट्रिकल सुपरभाइजर — प्रश्न-उत्तर प्रणाली")
-st.caption("🇳🇵 नेपाली र 🇬🇧 English दुवै भाषामा अनिवार्य उत्तर आउनेछ।")
+st.subheader("इलेक्ट्रिकल सुपरभाइजर — स्मार्ट द्विभाषी प्रश्न-उत्तर प्रणाली")
+st.caption("💡 तपाईंले नेपाली, अङ्ग्रेजी वा रोमन नेपाली (जस्तै: *'transformer ko working principle k ho'*) मा सोध्न सक्नुहुन्छ।")
 st.markdown("---")
 
 if "chat_history" not in st.session_state:
@@ -139,7 +184,7 @@ for m in st.session_state.chat_history:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
 
-if q := st.chat_input("प्रश्न यहाँ सोध्नुहोस्..."):
+if q := st.chat_input("प्रश्न यहाँ सोध्नुहोस् (रोमन वा नेपालीमा)..."):
     if not api_key:
         st.warning("कृपया साइडबारमा Groq API Key राख्नुहोस्।")
         st.stop()
@@ -149,32 +194,38 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
         st.markdown(q)
 
     with st.chat_message("assistant"):
-        with st.spinner("नोटहरू हेरेर नेपाली र English दुवैमा उत्तर तयार गर्दै..."):
+        with st.spinner("नोटहरू गहन अध्ययन गरी उत्तर तयार गर्दै..."):
             try:
-                relevant_notes = get_relevant_context(all_notes_text, q, max_chars=3500)
+                relevant_notes = get_relevant_context(all_notes_text, q, max_chars=4800)
 
-                # नेपाली भाषा अनिवार्य गराउने कडा निर्देशन
-                system_prompt = f"""You are an expert tutor for Nepal Electricity Authority (NEA) Level 5 Electrical examination.
-You must answer the student's question based strictly on the provided notes excerpts below:
+                # रोमन बुझ्ने र स्तरीय उत्तर दिने प्रम्प्ट
+                system_prompt = f"""You are a senior electrical engineering instructor preparing students for the Nepal Electricity Authority (NEA) Level 5 Supervisor exams.
 
-[NOTES EXCERPTS]:
-{relevant_notes if relevant_notes.strip() else "No notes uploaded. Use your general electrical engineering knowledge for NEA syllabus."}
+CONTEXT FROM UPLOADED NOTES:
+{relevant_notes if relevant_notes.strip() else "Use standard NEA Level 5 Electrical syllabus knowledge."}
 
-CRITICAL DUAL-LANGUAGE REQUIREMENT:
-You MUST structure your response into TWO distinct sections:
+CRITICAL RULES:
+1. UNDERSTAND ROMANIZED NEPALI:
+   - The student often asks in Romanized Nepali (e.g., 'transformer ko working principle k ho', 'motor ra generator ma k difference hunchha').
+   - Accurately understand the technical question and intent.
+
+2. THOROUGH, DETAILED EXAM-QUALITY ANSWERS:
+   - Do NOT provide one-line or superficial responses.
+   - Base your answer deeply on the provided notes. Explain principles, definitions, working steps, circuit formulas, and classifications in detail suitable for NEA written exams.
+
+3. MANDATORY BILINGUAL FORMAT:
+   Always structure the response into two distinct sections:
 
 ### 🇳🇵 नेपाली संस्करण (Nepali Version)
-- Write this section entirely in Nepali language (देवनागरी लिपि).
-- Explain the concepts, working principles, definitions, and points clearly in Nepali so that students can write it in their NEA exam.
+- Write an extensive, clear explanation entirely in Nepali (देवनागरी लिपि).
+- Include bullet points, working steps, and definitions that a candidate can directly write in an NEA exam.
 
 ---
 ### 🇬🇧 English Version
-- Provide the technical definitions, formulas, and key points in English.
-
-Rule: DO NOT omit or skip the Nepali section. Both sections are mandatory.
+- Provide crisp technical definitions, formulas, and bullet points in English.
 """
 
-                user_message = f"{q}\n\n(कृपया उत्तर अनिवार्य रूपमा पहिले नेपाली देवनागरी लिपिमा र त्यसपछि मात्र English मा दिनुहोस्।)"
+                user_message = f"विद्यार्थीको प्रश्न: {q}\n\n[Instruction: Understand Romanized Nepali if used. Give a complete, detailed, exam-standard answer in BOTH Nepali (देवनागरी) and English.]"
 
                 payload = {
                     "model": selected_model,
@@ -182,7 +233,7 @@ Rule: DO NOT omit or skip the Nepali section. Both sections are mandatory.
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_message}
                     ],
-                    "temperature": 0.1
+                    "temperature": 0.15
                 }
                 req_data = json.dumps(payload).encode("utf-8")
 

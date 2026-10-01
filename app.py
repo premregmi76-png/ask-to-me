@@ -22,7 +22,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# १. Gemini API Key व्यवस्थापन
 api_key = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -37,7 +36,28 @@ NOTES_DIR = "uploaded_notes"
 if not os.path.exists(NOTES_DIR):
     os.makedirs(NOTES_DIR)
 
-# २. साइडबार: API Key र नोट व्यवस्थापन
+# तपाईंको API Key अनुसार Google का सक्रिय मोडलहरू स्वतः पत्ता लगाउने फङ्सन
+def fetch_available_models(k):
+    if not k:
+        return ["gemini-2.5-flash", "gemini-2.0-flash"]
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={k.strip()}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            valid = [
+                m["name"].replace("models/", "") 
+                for m in data.get("models", []) 
+                if "generateContent" in m.get("supportedGenerationMethods", [])
+            ]
+            # Flash मोडलहरूलाई प्राथमिकता दिने
+            flash_models = [m for m in valid if "flash" in m.lower()]
+            other_models = [m for m in valid if "flash" not in m.lower()]
+            res = flash_models + other_models
+            return res if res else ["gemini-2.5-flash", "gemini-2.0-flash"]
+    except Exception:
+        return ["gemini-2.5-flash", "gemini-2.0-flash"]
+
 with st.sidebar:
     st.markdown("### ⚙️ Google Gemini सेटिङहरू")
     if not api_key:
@@ -48,16 +68,17 @@ with st.sidebar:
         )
         st.markdown("[👉 यहाँ क्लिक गरी नि:शुल्क Gemini Key लिनुहोस्](https://aistudio.google.com)")
 
-    # हाल Google का आधिकारिक सक्रिय Flash मोडलहरू
+    # सक्रिय मोडलहरूको अटो-डिटेक्ट सूची
+    available_models = fetch_available_models(api_key)
+    
     selected_model = st.selectbox(
-        "Gemini Model छान्नुहोस्:",
-        ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest"],
+        "सक्रिय Gemini Model:",
+        available_models,
         index=0
     )
 
     st.markdown("---")
     st.markdown("### 📚 नोट व्यवस्थापन (Upload & Manage)")
-    st.caption("यहाँ नयाँ नोट अपलोड गर्दा पुराना नोटहरू पनि सुरक्षित रहन्छन्।")
     
     uploaded_files = st.file_uploader(
         "नयाँ नोट थप्नुहोस् (PDF/TXT):", 
@@ -71,7 +92,7 @@ with st.sidebar:
             with open(file_path, "wb") as f:
                 f.write(file.getbuffer())
             new_count += 1
-        st.success(f"✅ {new_count} वटा नयाँ नोट सङ्ग्रहमा थपियो!")
+        st.success(f"✅ {new_count} वटा नोट सुरक्षित गरियो!")
 
     st.markdown("---")
     st.write("📁 **सङ्कलित नोटहरू (फाइल अनुसार हटाउनुहोस्):**")
@@ -95,7 +116,6 @@ with st.sidebar:
     else:
         st.info("कुनै नोट अपलोड गरिएको छैन।")
 
-# ३. नोटहरू पढ्ने फङ्सन
 def load_all_notes():
     text_blocks = []
     file_info = []
@@ -129,7 +149,6 @@ def load_all_notes():
 
 all_notes_text, file_info = load_all_notes()
 
-# मुख्य च्याट इन्टरफेस
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
 st.subheader("इलेक्ट्रिकल सुपरभाइजर — Google Gemini आधारित स्मार्ट प्रश्न-उत्तर प्रणाली")
 st.caption("🚀 १० लाख टोकन क्षमता | रोमन नेपाली, नेपाली तथा English दुवै भाषामा परीक्षा-स्तरको विस्तृत उत्तर")
@@ -204,40 +223,23 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
             }
             req_data = json.dumps(payload).encode("utf-8")
 
-            # स्वतः मोडल छान्ने र एररबाट बच्ने क्रम
-            models_to_try = [selected_model, "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest"]
-            seen = set()
-            models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
+            target_model = selected_model if selected_model else "gemini-2.5-flash"
+            endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={api_key.strip()}"
 
-            success = False
-            last_err = ""
+            try:
+                req = urllib.request.Request(
+                    endpoint_url,
+                    data=req_data,
+                    headers={"Content-Type": "application/json"}
+                )
 
-            for model_name in models_to_try:
-                try:
-                    endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key.strip()}"
-                    req = urllib.request.Request(
-                        endpoint_url,
-                        data=req_data,
-                        headers={"Content-Type": "application/json"}
-                    )
-
-                    with urllib.request.urlopen(req, timeout=60) as resp:
-                        result = json.loads(resp.read().decode("utf-8"))
-                        ans = result["candidates"][0]["content"]["parts"][0]["text"]
-                        st.markdown(ans)
-                        st.session_state.chat_history.append({"role": "assistant", "content": ans})
-                        success = True
-                        break
-                except urllib.error.HTTPError as http_err:
-                    err_detail = http_err.read().decode("utf-8", errors="ignore")
-                    last_err = f"({http_err.code}): {err_detail}"
-                    if http_err.code == 404:
-                        continue  # अर्को मोडल प्रयास गर्ने
-                    else:
-                        break
-                except Exception as err:
-                    last_err = str(err)
-                    break
-
-            if not success:
-                st.error(f"Gemini API त्रुटि: {last_err}")
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    ans = result["candidates"][0]["content"]["parts"][0]["text"]
+                    st.markdown(ans)
+                    st.session_state.chat_history.append({"role": "assistant", "content": ans})
+            except urllib.error.HTTPError as http_err:
+                err_detail = http_err.read().decode("utf-8", errors="ignore")
+                st.error(f"Gemini API त्रुटि ({http_err.code}): {err_detail}")
+            except Exception as err:
+                st.error(f"त्रुटि: {err}")

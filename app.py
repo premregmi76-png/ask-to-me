@@ -2,6 +2,7 @@ import os
 import json
 import urllib.request
 import urllib.error
+import time
 import streamlit as st
 
 try:
@@ -17,42 +18,47 @@ def safe_rerun():
         st.experimental_rerun()
 
 st.set_page_config(
-    page_title="NEA Level 5 Electrical - Gemini AI Tutor",
+    page_title="NEA Level 5 Electrical - AI Tutor",
     page_icon="⚡",
     layout="wide"
 )
 
+# Groq API Key व्यवस्थापन
 api_key = None
 try:
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key = st.secrets["GEMINI_API_KEY"]
+    if "GROQ_API_KEY" in st.secrets:
+        api_key = st.secrets["GROQ_API_KEY"]
 except Exception:
     pass
 
 if not api_key:
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
 
 NOTES_DIR = "uploaded_notes"
 if not os.path.exists(NOTES_DIR):
     os.makedirs(NOTES_DIR)
 
 with st.sidebar:
-    st.markdown("### ⚙️ Google Gemini सेटिङहरू")
+    st.markdown("### ⚙️ Groq सेटिङहरू")
     if not api_key:
         api_key = st.text_input(
-            "Gemini API Key राख्नुहोस्:", 
+            "Groq API Key राख्नुहोस्:", 
             type="password",
-            help="aistudio.google.com बाट नि:शुल्क की लिन सकिन्छ।"
+            help="console.groq.com बाट नि:शुल्क की लिन सकिन्छ।"
         )
-        st.markdown("[👉 यहाँ क्लिक गरी नि:शुल्क Gemini Key लिनुहोस्](https://aistudio.google.com)")
+        st.markdown("[👉 यहाँ क्लिक गरी नि:शुल्क Groq Key लिनुहोस्](https://console.groq.com)")
 
-    # Google ले तोकेको आधिकारिक नयाँ मोडल
-    selected_model = "gemini-3.8-flash"
-    st.caption(f"🤖 **सक्रिय मोडल:** `{selected_model}`")
+    # दैनिक १,००० प्रश्न क्षमता भएको बहुभाषिक मोडल
+    selected_model = st.selectbox(
+        "AI Model:",
+        ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+        index=0,
+        help="Qwen मोडलले नेपाली र रोमन दुवैमा परीक्षा-स्तरको उत्तर दिन्छ।"
+    )
 
     st.markdown("---")
     st.markdown("### 📚 नोट व्यवस्थापन (Upload & Manage)")
-    st.caption("यहाँ नयाँ नोट अपलोड गर्दा पुराना नोटहरू पनि सुरक्षित रहन्छन्।")
+    st.caption("यहाँ नयाँ नोट थप्दा पुराना नोटहरू पनि सुरक्षित रहन्छन्।")
     
     uploaded_files = st.file_uploader(
         "नयाँ नोट थप्नुहोस् (PDF/TXT):", 
@@ -123,9 +129,80 @@ def load_all_notes():
 
 all_notes_text, file_info = load_all_notes()
 
+# रोमन नेपाली शब्दहरू हटाउन र प्राविधिक शब्द जोड्ने फङ्सन
+ROMAN_STOPWORDS = {
+    "k", "ko", "ma", "le", "lai", "bata", "bhaneko", "bujhinchha", "ho", "hunchha", 
+    "chha", "chhan", "thiyo", "kin", "kina", "kasari", "kun", "kati", "barema", 
+    "bataunus", "lekhnus", "gareko", "garne", "hune", "ra", "ani", "wa", "athawa", 
+    "yo", "tyo", "yesko", "tyesko", "haru", "haruko", "euta", "duita", "nepali"
+}
+
+KEYWORD_MAP = {
+    "transformer": ["ट्रान्सफर्मर", "transformer"],
+    "generator": ["जेनेरेटर", "generator"],
+    "motor": ["मोटर", "motor"],
+    "working": ["कार्य", "काम", "working"],
+    "principle": ["कार्यसिद्धान्त", "सिद्धान्त", "principle"],
+    "transmission": ["प्रसारण", "transmission"],
+    "distribution": ["वितरण", "distribution"],
+    "substation": ["सबस्टेसन", "substation"],
+    "relay": ["रिले", "relay"],
+    "breaker": ["ब्रेकर", "breaker"],
+    "circuit": ["सर्किट", "circuit"],
+    "efficiency": ["दक्षता", "efficiency"],
+    "earthing": ["अर्थिङ", "earthing", "grounding"],
+    "cooling": ["कुलीङ", "cooling"],
+    "fault": ["फल्ट", "fault"],
+    "protection": ["सुरक्षा", "protection"],
+    "loss": ["हानि", "नोक्सानी", "loss", "losses"],
+    "losses": ["हानि", "नोक्सानी", "loss", "losses"],
+    "type": ["प्रकार", "वर्गीकरण", "type", "types"],
+    "types": ["प्रकार", "वर्गीकरण", "type", "types"],
+    "difference": ["फरक", "तुलना", "difference", "comparison"]
+}
+
+def get_smart_context(full_text, query, max_chars=3600):
+    if not full_text or len(full_text) <= max_chars:
+        return full_text
+
+    paragraphs = [p.strip() for p in full_text.split("\n") if len(p.strip()) > 25]
+    if not paragraphs:
+        return full_text[:max_chars]
+
+    clean_words = [
+        w.lower().replace("?", "").replace("।", "").replace(",", "") 
+        for w in query.split() if len(w) > 1 and w.lower() not in ROMAN_STOPWORDS
+    ]
+    
+    expanded = set(clean_words)
+    for w in clean_words:
+        if w in KEYWORD_MAP:
+            expanded.update(KEYWORD_MAP[w])
+
+    scored = []
+    for i, p in enumerate(paragraphs):
+        p_lower = p.lower()
+        score = sum(1 for w in expanded if w in p_lower)
+        scored.append((score, i, p))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected = []
+    curr_len = 0
+    for score, idx, p in scored:
+        if score > 0 or len(selected) < 3:
+            if curr_len + len(p) + 2 <= max_chars:
+                selected.append((idx, p))
+                curr_len += len(p) + 2
+            else:
+                break
+
+    selected.sort(key=lambda x: x[0])
+    extracted = "\n\n".join([p for _, p in selected])
+    return extracted if extracted.strip() else full_text[:max_chars]
+
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
-st.subheader("इलेक्ट्रिकल सुपरभाइजर — Google Gemini आधारित स्मार्ट प्रश्न-उत्तर प्रणाली")
-st.caption("🚀 १० लाख टोकन क्षमता | रोमन नेपाली, नेपाली तथा English दुवै भाषामा परीक्षा-स्तरको विस्तृत उत्तर")
+st.subheader("इलेक्ट्रिकल सुपरभाइजर — स्मार्ट द्विभाषी प्रश्न-उत्तर प्रणाली")
+st.caption("💡 दैनिक १,००० प्रश्न क्षमता | रोमन नेपाली, नेपाली तथा English दुवै भाषामा परीक्षा-स्तरको विस्तृत उत्तर")
 st.markdown("---")
 
 if all_notes_text.strip():
@@ -145,7 +222,7 @@ for m in st.session_state.chat_history:
 
 if q := st.chat_input("प्रश्न यहाँ सोध्नुहोस् (रोमन, नेपाली वा English मा)..."):
     if not api_key:
-        st.warning("कृपया साइडबारमा Google Gemini API Key राख्नुहोस्।")
+        st.warning("कृपया साइडबारमा Groq API Key राख्नुहोस्।")
         st.stop()
 
     st.session_state.chat_history.append({"role": "user", "content": q})
@@ -153,67 +230,73 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
         st.markdown(q)
 
     with st.chat_message("assistant"):
-        with st.spinner("Gemini AI ले नोटहरू अध्ययन गरी उत्तर तयार गर्दै..."):
-            trimmed_notes = all_notes_text[:80000]
+        with st.spinner("नोटहरू अध्ययन गरी नेपाली र English दुवैमा उत्तर तयार गर्दै..."):
+            relevant_notes = get_smart_context(all_notes_text, q, max_chars=3600)
 
-            system_prompt = f"""तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ इलेक्ट्रिकल सुपरभाइजर परीक्षाको आधिकारिक विशेषज्ञ प्रशिक्षक हुनुहुन्छ।
+            system_prompt = f"""You are a master electrical engineering instructor for Nepal Electricity Authority (NEA) Level 5 Supervisor exams.
 
-विद्यार्थीले अपलोड गरेका आधिकारिक नोटहरू:
-[सङ्कलित नोटहरू]:
-{trimmed_notes if trimmed_notes.strip() else "कुनै नोट अपलोड गरिएको छैन। आधिकारिक NEA तह-५ इलेक्ट्रिकल पाठ्यक्रमको ज्ञान प्रयोग गर्नुहोस्।"}
+CONTEXT FROM UPLOADED NOTES:
+{relevant_notes if relevant_notes.strip() else "Use standard NEA Level 5 Electrical syllabus knowledge."}
 
-कडा निर्देशनहरू (Strict Rules):
-१. रोमन नेपाली बुझ्नुहोस्:
-   - विद्यार्थीले रोमन नेपाली (जस्तै 'transformer ko working principle k ho', 'motor ra generator ma difference k chha') मा सोधे पनि प्राविधिक आशय बुझेर पूर्ण उत्तर दिनुहोस्।
-२. नोटको गहन प्रयोग:
-   - उत्तरलाई उपलब्ध नोटका तथ्य, कार्यविधि, सूत्र र बुँदाहरूमा आधारित बनाउनुहोस्।
-   - अल्छी वा एक-लाइनको उत्तर नदिनुहोस्। लोकसेवा लिखित परीक्षामा पूर्ण अङ्क आउने गरी स्पष्ट व्याख्या गर्नुहोस्।
-३. अनिवार्य द्विभाषी ढाँचा (Bilingual Format):
-   प्रत्येक उत्तर अनिवार्य रूपमा तलका दुई खण्डमा प्रस्तुत गर्नुहोस्:
+CRITICAL RULES:
+1. UNDERSTAND ROMANIZED NEPALI:
+   - The student frequently asks in Romanized Nepali (e.g., 'transformer ko working principle k ho', 'motor ra generator ma difference k chha'). Accurately understand their engineering intent.
+2. COMPREHENSIVE EXAM-QUALITY ANSWERS:
+   - Base your answer deeply on the provided notes. Explain working principles, definitions, formulas, and structured bullet points suitable for NEA written examinations.
+3. MANDATORY DUAL-LANGUAGE (BILINGUAL) FORMAT:
+   Structure your entire response strictly into these two exact sections:
 
 ### 🇳🇵 नेपाली संस्करण (Nepali Version)
-- शुद्ध नेपाली (देवनागरी लिपि) मा परिभाषा, कार्यसिद्धान्त, मुख्य बुँदाहरू र फाइदा/बेफाइदा लेख्नुहोस्।
+- शुद्ध नेपाली (देवनागरी लिपि) मा परिभाषा, कार्यसिद्धान्त, मुख्य बुँदाहरू र व्याख्या लेख्नुहोस्।
 
 ---
 ### 🇬🇧 English Version
-- Provide technical definitions, working formulas, specifications, and structured bullet points in English.
+- Provide the technical definitions, formulas, and bullet points in crisp English.
 """
 
-            user_prompt = f"विद्यार्थीको प्रश्न: {q}\n\n[निर्देशन: उपलब्ध नोट अध्ययन गरी उत्तर अनिवार्य रूपमा पहिले नेपाली (देवनागरी) र पछि English दुवैमा दिनुहोस्।]"
+            user_message = f"विद्यार्थीको प्रश्न: {q}\n\n[Instruction: Understand Romanized Nepali if used. Give a complete, detailed, exam-standard answer in BOTH Nepali (देवनागरी) and English.]"
 
             payload = {
-                "system_instruction": {
-                    "parts": [{"text": system_prompt}]
-                },
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [{"text": user_prompt}]
-                    }
+                "model": selected_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
                 ],
-                "generationConfig": {
-                    "temperature": 0.2
-                }
+                "temperature": 0.15
             }
             req_data = json.dumps(payload).encode("utf-8")
 
-            # Google ले तोकेको gemini-3.8-flash मा सिधै अनुरोध
-            endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key.strip()}"
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=req_data,
+                headers={
+                    "Authorization": f"Bearer {api_key.strip()}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "StreamlitApp"
+                }
+            )
 
-            try:
-                req = urllib.request.Request(
-                    endpoint_url,
-                    data=req_data,
-                    headers={"Content-Type": "application/json"}
-                )
+            # लगातार प्रश्न सोध्दा ट्राफिक जाम भएमा स्वतः १० सेकेन्ड पर्खेर उत्तर ल्याउने
+            ans = None
+            for attempt in range(2):
+                try:
+                    with urllib.request.urlopen(req, timeout=45) as resp:
+                        result = json.loads(resp.read().decode("utf-8"))
+                        ans = result["choices"][0]["message"]["content"]
+                        break
+                except urllib.error.HTTPError as http_err:
+                    err_detail = http_err.read().decode("utf-8", errors="ignore")
+                    if http_err.code == 429 and attempt == 0:
+                        st.info("⏳ प्रति-मिनेट ट्राफिक व्यवस्थापन हुँदैछ, कृपया १० सेकेन्ड पर्खनुहोस्...")
+                        time.sleep(12)
+                        continue
+                    else:
+                        st.error(f"Groq API त्रुटि ({http_err.code}): {err_detail}")
+                        break
+                except Exception as err:
+                    st.error(f"त्रुटि: {err}")
+                    break
 
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                    ans = result["candidates"][0]["content"]["parts"][0]["text"]
-                    st.markdown(ans)
-                    st.session_state.chat_history.append({"role": "assistant", "content": ans})
-            except urllib.error.HTTPError as http_err:
-                err_detail = http_err.read().decode("utf-8", errors="ignore")
-                st.error(f"Gemini API त्रुटि ({http_err.code}): {err_detail}")
-            except Exception as err:
-                st.error(f"त्रुटि: {err}")
+            if ans:
+                st.markdown(ans)
+                st.session_state.chat_history.append({"role": "assistant", "content": ans})

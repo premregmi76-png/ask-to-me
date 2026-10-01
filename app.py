@@ -23,6 +23,39 @@ def setting(name, default=""):
 
 api_key = setting("GROQ_API_KEY")
 model = setting("GROQ_MODEL", "llama-3.3-70b-versatile")
+model = setting("GROQ_MODEL", "openai/gpt-oss-20b")
+
+
+class ResponseProblem(Exception):
+    pass
+
+
+def read_answer(result):
+    if not isinstance(result, dict):
+        raise ResponseProblem("API response object को ढाँचा मिलेन।")
+    choices = result.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise ResponseProblem("API response मा choices भेटिएन वा ढाँचा मिलेन।")
+    choice = choices[0]
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        raise ResponseProblem("API response मा message object भेटिएन।")
+    answer = message.get("content")
+    finish = choice.get("finish_reason")
+    if isinstance(answer, str) and answer.strip():
+        return answer.strip(), finish == "length"
+    if finish == "length":
+        raise ResponseProblem(
+            "उत्तर लेख्नुअघि model को completion token सीमा सकियो (finish_reason=length)। "
+            "प्रश्नलाई सानो भागमा सोध्नुहोस्।"
+        )
+    if finish == "content_filter":
+        raise ResponseProblem("API को content filter ले उत्तर रोकेको छ।")
+    if message.get("refusal"):
+        raise ResponseProblem("Model ले यो प्रश्नको उत्तर दिन अस्वीकार गर्‍यो।")
+    if finish == "tool_calls" or message.get("tool_calls"):
+        raise ResponseProblem("API ले text उत्तरको सट्टा tool call फर्कायो।")
+    raise ResponseProblem("API बाट अन्तिम text उत्तर खाली आयो; token सीमा पुगेको पुष्टि भएन।")
 
 with st.sidebar:
     st.header("📚 अध्ययन सामग्री व्यवस्थापन")
@@ -117,7 +150,11 @@ if question:
                     ],
                     "temperature": 0.3,
                     "max_completion_tokens": 1024,
+                    "max_completion_tokens": 4096,
                 }
+                if model in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}:
+                    payload["reasoning_effort"] = "low"
+                    payload["include_reasoning"] = False
                 request = urllib.request.Request(
                     "https://api.groq.com/openai/v1/chat/completions",
                     data=json.dumps(payload).encode("utf-8"),
@@ -133,7 +170,10 @@ if question:
                 answer = result["choices"][0]["message"]["content"]
                 if not isinstance(answer, str) or not answer.strip():
                     raise ValueError("Empty answer")
+                answer, truncated = read_answer(result)
                 st.markdown(answer)
+                if truncated:
+                    st.warning("Token सीमा पुगेकाले यो उत्तर अपूरो हुन सक्छ। प्रश्नलाई सानो भागमा सोध्नुहोस्।")
                 st.session_state.chat_history.append({"role": "assistant", "content": answer})
             except urllib.error.HTTPError as err:
                 raw = err.read().decode("utf-8", errors="replace")
@@ -153,5 +193,10 @@ if question:
                     st.info("Streamlit Secrets को GROQ_API_KEY र Groq model permissions जाँच्नुहोस्।")
             except (urllib.error.URLError, TimeoutError):
                 st.error("Groq सँग सम्पर्क हुन सकेन वा समय सकियो। केही समयपछि प्रयास गर्नुहोस्।")
+            except ResponseProblem as err:
+                st.error(str(err))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                st.error("API बाट पढ्न मिल्ने JSON response आएन। पछि प्रयास गर्नुहोस्।")
             except (ValueError, KeyError, IndexError, TypeError):
                 st.error("API बाट अपेक्षित उत्तर आएन। फेरि प्रयास गर्नुहोस्।")
+                st.error("API response पढ्दा data को ढाँचा मिलेन।")

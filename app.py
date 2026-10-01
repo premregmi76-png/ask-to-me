@@ -36,27 +36,25 @@ NOTES_DIR = "uploaded_notes"
 if not os.path.exists(NOTES_DIR):
     os.makedirs(NOTES_DIR)
 
-# तपाईंको API Key अनुसार Google का सक्रिय मोडलहरू स्वतः पत्ता लगाउने फङ्सन
-def fetch_available_models(k):
+# Google बाट सोझै सक्रिय मोडलहरूको सूची तान्ने फङ्सन
+def get_live_models(k):
     if not k:
-        return ["gemini-2.5-flash", "gemini-2.0-flash"]
+        return []
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={k.strip()}"
         req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=12) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            valid = [
-                m["name"].replace("models/", "") 
-                for m in data.get("models", []) 
+            models = [
+                m["name"].replace("models/", "")
+                for m in data.get("models", [])
                 if "generateContent" in m.get("supportedGenerationMethods", [])
             ]
-            # Flash मोडलहरूलाई प्राथमिकता दिने
-            flash_models = [m for m in valid if "flash" in m.lower()]
-            other_models = [m for m in valid if "flash" not in m.lower()]
-            res = flash_models + other_models
-            return res if res else ["gemini-2.5-flash", "gemini-2.0-flash"]
+            flash = [m for m in models if "flash" in m.lower()]
+            other = [m for m in models if "flash" not in m.lower()]
+            return flash + other
     except Exception:
-        return ["gemini-2.5-flash", "gemini-2.0-flash"]
+        return []
 
 with st.sidebar:
     st.markdown("### ⚙️ Google Gemini सेटिङहरू")
@@ -68,14 +66,34 @@ with st.sidebar:
         )
         st.markdown("[👉 यहाँ क्लिक गरी नि:शुल्क Gemini Key लिनुहोस्](https://aistudio.google.com)")
 
-    # सक्रिय मोडलहरूको अटो-डिटेक्ट सूची
-    available_models = fetch_available_models(api_key)
+    live_models = get_live_models(api_key) if api_key else []
     
-    selected_model = st.selectbox(
-        "सक्रिय Gemini Model:",
-        available_models,
-        index=0
-    )
+    if live_models:
+        selected_model = st.selectbox("सक्रिय Gemini Model (Google द्वारा अनुमोदित):", live_models, index=0)
+    else:
+        selected_model = st.selectbox(
+            "Gemini Model छान्नुहोस्:", 
+            ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"],
+            index=0
+        )
+
+    # API Key जाँच्ने परीक्षण बटन
+    if st.button("🔌 API Key परीक्षण गर्नुहोस् (Test Connection)"):
+        if not api_key:
+            st.warning("कृपया पहिले API Key राख्नुहोस्।")
+        else:
+            try:
+                test_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key.strip()}"
+                req = urllib.request.Request(test_url)
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    m_names = [m["name"].replace("models/", "") for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+                    st.success(f"सफल भयो! तपाईंका लागि सक्रिय मोडल: {m_names[0]}")
+            except urllib.error.HTTPError as err:
+                err_body = err.read().decode("utf-8", errors="ignore")
+                st.error(f"Google ले Key अस्वीकार गर्यो ({err.code}): {err_body}")
+            except Exception as e:
+                st.error(f"जडान हुन सकेन: {e}")
 
     st.markdown("---")
     st.markdown("### 📚 नोट व्यवस्थापन (Upload & Manage)")

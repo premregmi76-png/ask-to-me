@@ -48,12 +48,12 @@ with st.sidebar:
         )
         st.markdown("[👉 यहाँ क्लिक गरी नि:शुल्क Groq Key लिनुहोस्](https://console.groq.com)")
 
-    # दैनिक १,००० प्रश्न क्षमता भएको बहुभाषिक मोडल
+    # नेपाली भाषा राम्रो लेख्ने Qwen मोडल डिफल्ट राखिएको छ
     selected_model = st.selectbox(
-        "AI Model:",
-        ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+        "AI Model छान्नुहोस्:",
+        ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"],
         index=0,
-        help="Qwen मोडलले नेपाली र रोमन दुवैमा परीक्षा-स्तरको उत्तर दिन्छ।"
+        help="Qwen मोडलले नेपाली भाषा (देवनागरी) मा शतप्रतिशत शुद्ध उत्तर दिन्छ।"
     )
 
     st.markdown("---")
@@ -122,14 +122,13 @@ def load_all_notes():
             w_count = len(content.split())
             file_info.append((f, w_count))
             if content.strip():
-                text_blocks.append(f"\n=== [फाइल: {f}] ===\n" + content)
+                text_blocks.append(f"\n=== [स्रोत फाइल: {f}] ===\n" + content)
                 
     full_text = "\n".join(text_blocks)
     return full_text, file_info
 
 all_notes_text, file_info = load_all_notes()
 
-# रोमन नेपाली शब्दहरू हटाउन र प्राविधिक शब्द जोड्ने फङ्सन
 ROMAN_STOPWORDS = {
     "k", "ko", "ma", "le", "lai", "bata", "bhaneko", "bujhinchha", "ho", "hunchha", 
     "chha", "chhan", "thiyo", "kin", "kina", "kasari", "kun", "kati", "barema", 
@@ -202,7 +201,7 @@ def get_smart_context(full_text, query, max_chars=3600):
 
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
 st.subheader("इलेक्ट्रिकल सुपरभाइजर — स्मार्ट द्विभाषी प्रश्न-उत्तर प्रणाली")
-st.caption("💡 दैनिक १,००० प्रश्न क्षमता | रोमन नेपाली, नेपाली तथा English दुवै भाषामा परीक्षा-स्तरको विस्तृत उत्तर")
+st.caption("💡 दैनिक १,००० प्रश्न क्षमता | अनिवार्य नेपाली (देवनागरी) र English दुवैमा विस्तृत उत्तर")
 st.markdown("---")
 
 if all_notes_text.strip():
@@ -230,31 +229,39 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
         st.markdown(q)
 
     with st.chat_message("assistant"):
-        with st.spinner("नोटहरू अध्ययन गरी नेपाली र English दुवैमा उत्तर तयार गर्दै..."):
+        with st.spinner("नोटहरू गहन अध्ययन गरी अनिवार्य रूपमा नेपाली र English दुवैमा उत्तर तयार गर्दै..."):
             relevant_notes = get_smart_context(all_notes_text, q, max_chars=3600)
 
-            system_prompt = f"""You are a master electrical engineering instructor for Nepal Electricity Authority (NEA) Level 5 Supervisor exams.
+            # नेपाली भाषा अनिवार्य गराउने कडा नमूना सहितको प्रम्प्ट
+            system_prompt = f"""तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ इलेक्ट्रिकल सुपरभाइजर परीक्षाको आधिकारिक विशेषज्ञ प्रशिक्षक हुनुहुन्छ।
 
-CONTEXT FROM UPLOADED NOTES:
-{relevant_notes if relevant_notes.strip() else "Use standard NEA Level 5 Electrical syllabus knowledge."}
+विद्यार्थीले अपलोड गरेका आधिकारिक नोटहरू:
+{relevant_notes if relevant_notes.strip() else "कुनै नोट छैन। आधिकारिक NEA तह-५ इलेक्ट्रिकल पाठ्यक्रमको ज्ञान प्रयोग गर्नुहोस्।"}
 
-CRITICAL RULES:
-1. UNDERSTAND ROMANIZED NEPALI:
-   - The student frequently asks in Romanized Nepali (e.g., 'transformer ko working principle k ho', 'motor ra generator ma difference k chha'). Accurately understand their engineering intent.
-2. COMPREHENSIVE EXAM-QUALITY ANSWERS:
-   - Base your answer deeply on the provided notes. Explain working principles, definitions, formulas, and structured bullet points suitable for NEA written examinations.
-3. MANDATORY DUAL-LANGUAGE (BILINGUAL) FORMAT:
-   Structure your entire response strictly into these two exact sections:
+कडा निर्देशनहरू (STRICT RULES):
+१. विद्यार्थीले रोमन नेपाली (जस्तै 'transformer ko working principle k ho', 'motor ra generator ma difference k chha') मा प्रश्न सोधे पनि प्राविधिक आशय बुझेर पूर्ण उत्तर दिनुहोस्।
+२. तपाईंको उत्तर अनिवार्य रूपमा तल दिइएको ढाँचामा दुईवटा स्पष्ट खण्डमा हुनुपर्छ:
 
 ### 🇳🇵 नेपाली संस्करण (Nepali Version)
-- शुद्ध नेपाली (देवनागरी लिपि) मा परिभाषा, कार्यसिद्धान्त, मुख्य बुँदाहरू र व्याख्या लेख्नुहोस्।
+- यो खण्डका सम्पूर्ण वाक्यहरू अनिवार्य रूपमा नेपाली भाषा (देवनागरी लिपि) मा लेखिएको हुनुपर्छ। यहाँ अङ्ग्रेजी वाक्य लेख्न कडा निषेध छ।
+- प्राविधिक परिभाषा, कार्यसिद्धान्त, मुख्य बुँदाहरू र सूत्रहरू सरल नेपालीमा व्याख्या गर्नुहोस् ताकि विद्यार्थीले परीक्षामा लेख्न सकून्।
 
 ---
 ### 🇬🇧 English Version
-- Provide the technical definitions, formulas, and bullet points in crisp English.
+- Provide technical definitions, working formulas, specifications, and structured bullet points in English.
+
+नमूना ढाँचा (FOLLOW THIS FORMAT EXACTLY):
+### 🇳🇵 नेपाली संस्करण (Nepali Version)
+- ट्रान्सफर्मर एक स्थिर विद्युतीय उपकरण (static device) हो, जसले फ्रिक्वेन्सी परिवर्तन नगरी भोल्टेजको स्तर बढाउने वा घटाउने गर्दछ।
+- कार्यसिद्धान्त: यो माइकल फराडेको म्युचुअल इन्डक्सन (Mutual Induction) को नियममा काम गर्दछ।
+
+---
+### 🇬🇧 English Version
+- A transformer is a static electrical machine that transfers electrical energy without changing frequency.
+- Working Principle: It operates on Faraday's law of mutual electromagnetic induction.
 """
 
-            user_message = f"विद्यार्थीको प्रश्न: {q}\n\n[Instruction: Understand Romanized Nepali if used. Give a complete, detailed, exam-standard answer in BOTH Nepali (देवनागरी) and English.]"
+            user_message = f"विद्यार्थीको प्रश्न: {q}\n\n[अनिवार्य निर्देशन: खण्ड १ मा सम्पूर्ण विवरण नेपाली भाषा (देवनागरी लिपि) मा लेख्नुहोस् र खण्ड २ मा मात्र English प्रयोग गर्नुहोस्। दुवै खण्ड अनिवार्य छन्।]"
 
             payload = {
                 "model": selected_model,
@@ -276,7 +283,6 @@ CRITICAL RULES:
                 }
             )
 
-            # लगातार प्रश्न सोध्दा ट्राफिक जाम भएमा स्वतः १० सेकेन्ड पर्खेर उत्तर ल्याउने
             ans = None
             for attempt in range(2):
                 try:

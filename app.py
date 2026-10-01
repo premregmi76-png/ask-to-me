@@ -32,7 +32,6 @@ with st.sidebar:
     if not api_key:
         api_key = st.text_input("Groq API Key राख्नुहोस्:", type="password")
     
-    # हाल Groq मा चल्ने आधिकारिक सक्रिय मोडलहरू
     selected_model = st.selectbox(
         "AI Model छान्नुहोस्:",
         ["openai/gpt-oss-20b", "openai/gpt-oss-120b"],
@@ -54,8 +53,9 @@ if uploaded_files:
             f.write(file.getbuffer())
     st.cache_data.clear()
 
+# सबै नोटहरू पढ्ने
 @st.cache_data
-def get_notes():
+def get_all_notes():
     text = ""
     if os.path.exists(NOTES_DIR):
         for f in os.listdir(NOTES_DIR):
@@ -75,9 +75,9 @@ def get_notes():
                         text += file.read() + "\n"
                 except Exception:
                     pass
-    return text[:30000]
+    return text
 
-notes_content = get_notes()
+all_notes_text = get_all_notes()
 
 with st.sidebar:
     st.write("📁 **हाल उपलब्ध नोटहरू:**")
@@ -88,17 +88,36 @@ with st.sidebar:
     else:
         st.info("कुनै नोट अपलोड गरिएको छैन।")
 
-# प्रम्प्ट निर्माण
-if notes_content.strip():
-    system_prompt = f"""तपाईं NEA Level 5 Electrical को शिक्षक हुनुहुन्छ। तल दिइएका आधिकारिक नोटहरू पढेर विद्यार्थीको प्रश्नको उत्तर दिनुहोस्।
-
-[आधिकारिक नोटहरू]:
-{notes_content}
-
-निर्देशन:
-- केवल नोटमा आधारित तथ्यपरक र स्पष्ट उत्तर दिनुहोस्।"""
-else:
-    system_prompt = "तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ इलेक्ट्रिकल सुपरभाइजर परीक्षाको विज्ञ शिक्षक हुनुहुन्छ। विद्यार्थीका प्रश्नहरूको सरल, स्पष्ट र बुँदागत उत्तर दिनुहोस्।"
+# रेट लिमिट (TPM) रोक्न प्रश्नसँग सम्बन्धित मुख्य भाग मात्र निकाल्ने स्मार्ट फङ्सन
+def get_relevant_context(full_text, query, max_chars=3500):
+    if not full_text or len(full_text) <= max_chars:
+        return full_text
+    
+    paragraphs = [p.strip() for p in full_text.split("\n") if len(p.strip()) > 25]
+    if not paragraphs:
+        return full_text[:max_chars]
+    
+    query_words = set([w.lower() for w in query.split() if len(w) > 1])
+    scored = []
+    for i, p in enumerate(paragraphs):
+        p_lower = p.lower()
+        score = sum(1 for w in query_words if w in p_lower)
+        scored.append((score, i, p))
+    
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected = []
+    curr_len = 0
+    for score, idx, p in scored:
+        if score > 0 or len(selected) < 2:
+            if curr_len + len(p) + 2 <= max_chars:
+                selected.append((idx, p))
+                curr_len += len(p) + 2
+            else:
+                break
+    
+    selected.sort(key=lambda x: x[0])
+    extracted = "\n\n".join([p for _, p in selected])
+    return extracted if extracted.strip() else full_text[:max_chars]
 
 # मुख्य इन्टरफेस
 st.title("⚡ नेपाल विद्युत प्राधिकरण (NEA) तह-५")
@@ -124,6 +143,21 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
     with st.chat_message("assistant"):
         with st.spinner("उत्तर खोज्दै..."):
             try:
+                # प्रश्न अनुसार सान्दर्भिक सानो अंश मात्र छान्ने (टोकन बचत गर्न)
+                relevant_notes = get_relevant_context(all_notes_text, q, max_chars=3500)
+                
+                if relevant_notes.strip():
+                    system_prompt = f"""तपाईं NEA Level 5 Electrical को आधिकारिक शिक्षक हुनुहुन्छ। तल दिइएको नोटको सान्दर्भिक अंश पढेर विद्यार्थीको प्रश्नको उत्तर दिनुहोस्।
+
+[नोटको सान्दर्भिक अंश]:
+{relevant_notes}
+
+निर्देशन:
+- केवल नोटको आधारमा तथ्यपरक र स्पष्ट उत्तर दिनुहोस्।
+- यदि उत्तर नोटमा स्पष्ट छैन भने पनि सामान्य अनुमान नगरी नोटमा भएको जानकारी मात्र दिनुहोस्।"""
+                else:
+                    system_prompt = "तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ इलेक्ट्रिकल सुपरभाइजर परीक्षाको विज्ञ शिक्षक हुनुहुन्छ। विद्यार्थीका प्रश्नहरूको सरल, स्पष्ट र बुँदागत उत्तर दिनुहोस्।"
+
                 payload = {
                     "model": selected_model,
                     "messages": [
@@ -152,6 +186,9 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
             except urllib.error.HTTPError as http_err:
                 err_detail = http_err.read().decode("utf-8", errors="ignore")
-                st.error(f"Groq API त्रुटि ({http_err.code}): {err_detail}")
+                if http_err.code == 429:
+                    st.warning("⚠️ Groq को प्रति-मिनेट सीमा पुगेको छ। कृपया १५-२० सेकेन्ड पर्खेर फेरि प्रश्न सोध्नुहोला।")
+                else:
+                    st.error(f"Groq API त्रुटि ({http_err.code}): {err_detail}")
             except Exception as err:
                 st.error(f"त्रुटि: {err}")

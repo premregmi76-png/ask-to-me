@@ -1,20 +1,21 @@
 import os
 import json
 import urllib.request
+import urllib.error
 import streamlit as st
 from pypdf import PdfReader
 
 # पेज कन्फिगरेसन
 st.set_page_config(
-    page_title="NEA Level 5 Electrical - Ask To Me", 
-    page_icon="⚡", 
+    page_title="NEA Level 5 Electrical - Ask To Me",
+    page_icon="⚡",
     layout="wide"
 )
 
 # Groq API Key
 api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 if not api_key:
-    st.error("प्रणाली कन्फिगरेसन (GROQ_API_KEY) मिलाउन बाँकी छ।")
+    st.error("प्रणाली कन्फिगरेसन (GROQ_API_KEY) मिलाउन बाँकी छ। कृपया st.secrets वा Environment Variable मा GROQ_API_KEY सेट गर्नुहोस्।")
     st.stop()
 
 NOTES_DIR = "uploaded_notes"
@@ -28,14 +29,15 @@ with st.sidebar:
     uploaded_files = st.file_uploader("नोट अपलोड गर्नुहोस् (PDF/TXT)", type=["pdf", "txt"], accept_multiple_files=True)
     if uploaded_files:
         for file in uploaded_files:
-            with open(os.path.join(NOTES_DIR, file.name), "wb") as f:
+            file_path = os.path.join(NOTES_DIR, file.name)
+            with open(file_path, "wb") as f:
                 f.write(file.getbuffer())
         st.cache_data.clear()
         st.success("नयाँ नोट सुरक्षित गरियो!")
     
     st.markdown("---")
     st.write("📁 **हाल उपलब्ध नोटहरू:**")
-    files = os.listdir(NOTES_DIR)
+    files = os.listdir(NOTES_DIR) if os.path.exists(NOTES_DIR) else []
     if files:
         for f in files:
             st.caption(f"• {f}")
@@ -64,13 +66,13 @@ def get_notes():
                         text += file.read() + "\n"
                 except Exception:
                     pass
-    return text[:60000]
+    # Groq free tier टोकन सीमा सुरक्षित राख्न दायरा (लगभग ३०,००० क्यारेक्टर)
+    return text[:30000]
 
 notes_content = get_notes()
 
 # कडा शिक्षक नियम (१००% नोट भित्रबाट मात्र उत्तर आउने)
-system_prompt = f"""
-तपाईंको एकमात्र काम तल दिइएको [आधिकारिक नोटहरू] पढेर विद्यार्थीको प्रश्नको उत्तर दिनु हो।
+system_prompt = f"""तपाईंको एकमात्र काम तल दिइएको [आधिकारिक नोटहरू] पढेर विद्यार्थीको प्रश्नको उत्तर दिनु हो।
 
 [आधिकारिक नोटहरू]:
 {notes_content if notes_content.strip() else "कुनै पनि नोटहरू उपलब्ध छैनन्।"}
@@ -105,14 +107,15 @@ if q := st.chat_input("उपलब्ध नोट सम्बन्धी प
     with st.chat_message("assistant"):
         with st.spinner("नोटहरू हेरेर उत्तर खोज्दै..."):
             try:
-                req_data = json.dumps({
+                payload = {
                     "model": "llama-3.1-8b-instant",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": q}
                     ],
-                    "temperature": 0.0  # शून्य कल्पनाशीलता (नोटमा जे छ त्यही मात्र आउने)
-                }).encode("utf-8")
+                    "temperature": 0.0
+                }
+                req_data = json.dumps(payload).encode("utf-8")
 
                 req = urllib.request.Request(
                     "https://api.groq.com/openai/v1/chat/completions",
@@ -130,5 +133,8 @@ if q := st.chat_input("उपलब्ध नोट सम्बन्धी प
                 
                 st.markdown(ans)
                 st.session_state.chat_history.append({"role": "assistant", "content": ans})
+            except urllib.error.HTTPError as http_err:
+                error_body = http_err.read().decode("utf-8", errors="ignore")
+                st.error(f"Groq API त्रुटि ({http_err.code}): {error_body}")
             except Exception as err:
                 st.error(f"त्रुटि देखा पर्यो: {err}")

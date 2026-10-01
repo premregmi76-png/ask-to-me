@@ -10,7 +10,6 @@ try:
 except ImportError:
     PYPDF_AVAILABLE = False
 
-# सुरक्षित Rerun फङ्सन (सबै Streamlit भर्सनमा सजिलै चल्ने)
 def safe_rerun():
     if hasattr(st, "rerun"):
         st.rerun()
@@ -23,7 +22,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# १. Gemini API Key व्यवस्थापन (Secrets, Environment वा Sidebar बाट)
+# १. Gemini API Key व्यवस्थापन
 api_key = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -49,6 +48,13 @@ with st.sidebar:
         )
         st.markdown("[👉 यहाँ क्लिक गरी नि:शुल्क Gemini Key लिनुहोस्](https://aistudio.google.com)")
 
+    # हाल Google का आधिकारिक सक्रिय Flash मोडलहरू
+    selected_model = st.selectbox(
+        "Gemini Model छान्नुहोस्:",
+        ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest"],
+        index=0
+    )
+
     st.markdown("---")
     st.markdown("### 📚 नोट व्यवस्थापन (Upload & Manage)")
     st.caption("यहाँ नयाँ नोट अपलोड गर्दा पुराना नोटहरू पनि सुरक्षित रहन्छन्।")
@@ -65,7 +71,7 @@ with st.sidebar:
             with open(file_path, "wb") as f:
                 f.write(file.getbuffer())
             new_count += 1
-        st.success(f"✅ {new_count} वटा नोट सुरक्षित गरियो!")
+        st.success(f"✅ {new_count} वटा नयाँ नोट सङ्ग्रहमा थपियो!")
 
     st.markdown("---")
     st.write("📁 **सङ्कलित नोटहरू (फाइल अनुसार हटाउनुहोस्):**")
@@ -89,7 +95,7 @@ with st.sidebar:
     else:
         st.info("कुनै नोट अपलोड गरिएको छैन।")
 
-# ३. सबै नोटहरू लोड गर्ने फङ्सन (Gemini ले पूरै नोट एकैचोटि पढ्न सक्छ)
+# ३. नोटहरू पढ्ने फङ्सन
 def load_all_notes():
     text_blocks = []
     file_info = []
@@ -129,14 +135,13 @@ st.subheader("इलेक्ट्रिकल सुपरभाइजर — 
 st.caption("🚀 १० लाख टोकन क्षमता | रोमन नेपाली, नेपाली तथा English दुवै भाषामा परीक्षा-स्तरको विस्तृत उत्तर")
 st.markdown("---")
 
-# नोटको स्थिति जाँच गर्ने बाकस
 if all_notes_text.strip():
     with st.expander("🔍 नोटबाट पढिएको सामग्रीको स्थिति हेर्नुहोस्"):
         for fname, wc in file_info:
             if wc > 0:
                 st.write(f"✅ **{fname}**: {wc:,} शब्दहरू प्रणालीमा उपलब्ध छन्।")
             else:
-                st.write(f"⚠️ **{fname}**: ० शब्द भेटियो (यो स्क्यान गरिएको/फोटो PDF हुन सक्छ)।")
+                st.write(f"⚠️ **{fname}**: ० शब्द भेटियो (यो स्क्यान गरिएको PDF हुन सक्छ)।")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -145,10 +150,9 @@ for m in st.session_state.chat_history:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
 
-# च्याट इनपुट
 if q := st.chat_input("प्रश्न यहाँ सोध्नुहोस् (रोमन, नेपाली वा English मा)..."):
     if not api_key:
-        st.warning("कृपया साइडबारमा Google Gemini API Key प्रविष्ट गर्नुहोस्।")
+        st.warning("कृपया साइडबारमा Google Gemini API Key राख्नुहोस्।")
         st.stop()
 
     st.session_state.chat_history.append({"role": "user", "content": q})
@@ -157,18 +161,16 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
 
     with st.chat_message("assistant"):
         with st.spinner("Gemini AI ले नोटहरू गहन अध्ययन गरी उत्तर तयार गर्दै..."):
-            try:
-                # Gemini को १० लाख टोकन क्षमता भएकाले ८०,००० क्यारेक्टर सम्म पूरै नोट सिधै पठाउन सकिन्छ
-                trimmed_notes = all_notes_text[:80000]
+            trimmed_notes = all_notes_text[:80000]
 
-                system_prompt = f"""तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ इलेक्ट्रिकल सुपरभाइजर परीक्षाको आधिकारिक विशेषज्ञ प्रशिक्षक हुनुहुन्छ।
+            system_prompt = f"""तपाईं नेपाल विद्युत प्राधिकरण (NEA) तह-५ इलेक्ट्रिकल सुपरभाइजर परीक्षाको आधिकारिक विशेषज्ञ प्रशिक्षक हुनुहुन्छ।
 
-विद्यार्थीले अपलोड गरेका आधिकारिक नोटहरू तल दिइएको छ:
+विद्यार्थीले अपलोड गरेका आधिकारिक नोटहरू:
 [सङ्कलित नोटहरू]:
 {trimmed_notes if trimmed_notes.strip() else "कुनै नोट अपलोड गरिएको छैन। आधिकारिक NEA तह-५ इलेक्ट्रिकल पाठ्यक्रमको ज्ञान प्रयोग गर्नुहोस्।"}
 
 कडा निर्देशनहरू (Strict Rules):
-१. रोमन नेपाली बुझ्नुहोस् (Understand Romanized Nepali):
+१. रोमन नेपाली बुझ्नुहोस्:
    - विद्यार्थीले रोमन नेपाली (जस्तै 'transformer ko working principle k ho', 'motor ra generator ma difference k chha') मा सोधे पनि प्राविधिक आशय बुझेर पूर्ण उत्तर दिनुहोस्।
 २. नोटको गहन प्रयोग:
    - उत्तरलाई उपलब्ध नोटका तथ्य, कार्यविधि, सूत्र र बुँदाहरूमा आधारित बनाउनुहोस्।
@@ -184,43 +186,58 @@ if q := st.chat_input("प्रश्न यहाँ सोध्नुहो�
 - Provide technical definitions, working formulas, specifications, and structured bullet points in English.
 """
 
-                user_prompt = f"विद्यार्थीको प्रश्न: {q}\n\n[निर्देशन: उपलब्ध नोट अध्ययन गरी उत्तर अनिवार्य रूपमा पहिले नेपाली (देवनागरी) र पछि English दुवैमा दिनुहोस्।]"
+            user_prompt = f"विद्यार्थीको प्रश्न: {q}\n\n[निर्देशन: उपलब्ध नोट अध्ययन गरी उत्तर अनिवार्य रूपमा पहिले नेपाली (देवनागरी) र पछि English दुवैमा दिनुहोस्।]"
 
-                # Gemini 1.5 Flash API Payload
-                payload = {
-                    "system_instruction": {
-                        "parts": [{"text": system_prompt}]
-                    },
-                    "contents": [
-                        {
-                            "role": "user",
-                            "parts": [{"text": user_prompt}]
-                        }
-                    ],
-                    "generationConfig": {
-                        "temperature": 0.2
+            payload = {
+                "system_instruction": {
+                    "parts": [{"text": system_prompt}]
+                },
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": user_prompt}]
                     }
+                ],
+                "generationConfig": {
+                    "temperature": 0.2
                 }
-                req_data = json.dumps(payload).encode("utf-8")
+            }
+            req_data = json.dumps(payload).encode("utf-8")
 
-                endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key.strip()}"
+            # स्वतः मोडल छान्ने र एररबाट बच्ने क्रम
+            models_to_try = [selected_model, "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest"]
+            seen = set()
+            models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
-                req = urllib.request.Request(
-                    endpoint_url,
-                    data=req_data,
-                    headers={
-                        "Content-Type": "application/json"
-                    }
-                )
+            success = False
+            last_err = ""
 
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                    ans = result["candidates"][0]["content"]["parts"][0]["text"]
+            for model_name in models_to_try:
+                try:
+                    endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key.strip()}"
+                    req = urllib.request.Request(
+                        endpoint_url,
+                        data=req_data,
+                        headers={"Content-Type": "application/json"}
+                    )
 
-                st.markdown(ans)
-                st.session_state.chat_history.append({"role": "assistant", "content": ans})
-            except urllib.error.HTTPError as http_err:
-                err_detail = http_err.read().decode("utf-8", errors="ignore")
-                st.error(f"Gemini API त्रुटि ({http_err.code}): {err_detail}")
-            except Exception as err:
-                st.error(f"त्रुटि देखा पर्यो: {err}")
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        result = json.loads(resp.read().decode("utf-8"))
+                        ans = result["candidates"][0]["content"]["parts"][0]["text"]
+                        st.markdown(ans)
+                        st.session_state.chat_history.append({"role": "assistant", "content": ans})
+                        success = True
+                        break
+                except urllib.error.HTTPError as http_err:
+                    err_detail = http_err.read().decode("utf-8", errors="ignore")
+                    last_err = f"({http_err.code}): {err_detail}"
+                    if http_err.code == 404:
+                        continue  # अर्को मोडल प्रयास गर्ने
+                    else:
+                        break
+                except Exception as err:
+                    last_err = str(err)
+                    break
+
+            if not success:
+                st.error(f"Gemini API त्रुटि: {last_err}")
